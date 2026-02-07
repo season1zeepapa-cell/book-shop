@@ -25,18 +25,65 @@ function validateEnvironment() {
     process.exit(1);  // 서버 종료 (에러 코드 1)
   }
 
+  // 추가: 환경변수 값 형식 검증
+  // JWT_SECRET은 최소 32자 이상이어야 안전해요 (256비트)
+  if (process.env.JWT_SECRET.length < 32) {
+    console.error(`❌ JWT_SECRET은 최소 32자 이상이어야 합니다 (현재: ${process.env.JWT_SECRET.length}자)`);
+    console.error('💡 다음 명령어로 안전한 키를 생성하세요:');
+    console.error('   node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+    process.exit(1);
+  }
+
+  // DATABASE_URL은 postgresql:// 또는 postgres://로 시작해야 해요
+  if (!process.env.DATABASE_URL.startsWith('postgres://') && !process.env.DATABASE_URL.startsWith('postgresql://')) {
+    console.error('❌ DATABASE_URL 형식이 올바르지 않습니다 (postgres:// 또는 postgresql://로 시작해야 함)');
+    process.exit(1);
+  }
+
   console.log('✅ 모든 필수 환경변수가 설정되었습니다');
+  console.log('✅ 환경변수 값 검증 통과');
 }
 
 // 환경변수 검증 실행
 validateEnvironment();
 
-const express = require('express');   // 웹 서버를 쉽게 만들어주는 프레임워크
-const { Pool } = require('pg');       // PostgreSQL 데이터베이스 연결 도구
-const bcrypt = require('bcrypt');     // 비밀번호를 안전하게 암호화하는 도구
-const jwt = require('jsonwebtoken');  // JWT 토큰을 만들고 검증하는 도구
-const path = require('path');         // 파일 경로를 다루는 Node.js 내장 모듈
-const fs = require('fs');             // 파일 시스템 모듈 (logs 폴더 생성용)
+// ============================================
+// ✅ 1-2단계: 비밀번호 강도 검증 함수
+// ============================================
+// 안전한 비밀번호 정책을 적용하는 함수예요
+// 요구사항: 최소 8자, 대문자 1개 이상, 숫자 1개 이상, 특수문자 1개 이상
+function validatePasswordStrength(password) {
+  const minLength = 8;
+  const hasUpperCase = /[A-Z]/.test(password);          // 대문자 포함 확인
+  const hasLowerCase = /[a-z]/.test(password);          // 소문자 포함 확인
+  const hasNumber = /\d/.test(password);                // 숫자 포함 확인
+  const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);  // 특수문자 포함 확인
+
+  if (password.length < minLength) {
+    return { valid: false, error: '비밀번호는 8자 이상이어야 합니다' };
+  }
+  if (!hasUpperCase) {
+    return { valid: false, error: '비밀번호에 대문자가 포함되어야 합니다' };
+  }
+  if (!hasNumber) {
+    return { valid: false, error: '비밀번호에 숫자가 포함되어야 합니다' };
+  }
+  if (!hasSpecialChar) {
+    return { valid: false, error: '비밀번호에 특수문자(!@#$%^&* 등)가 포함되어야 합니다' };
+  }
+
+  return { valid: true };
+}
+
+const express = require('express');        // 웹 서버를 쉽게 만들어주는 프레임워크
+const { Pool } = require('pg');            // PostgreSQL 데이터베이스 연결 도구
+const bcrypt = require('bcrypt');          // 비밀번호를 안전하게 암호화하는 도구
+const jwt = require('jsonwebtoken');       // JWT 토큰을 만들고 검증하는 도구
+const path = require('path');              // 파일 경로를 다루는 Node.js 내장 모듈
+const fs = require('fs');                  // 파일 시스템 모듈 (logs 폴더 생성용)
+const rateLimit = require('express-rate-limit');  // Rate limiting (브루트포스 공격 방지)
+const validator = require('validator');    // 입력값 검증 (이메일 형식 등)
+const helmet = require('helmet');          // 보안 HTTP 헤더 설정
 
 // Express 앱 생성 (우리 서버의 본체)
 const app = express();
@@ -80,9 +127,40 @@ const encryptedSecretKey = 'Basic ' + Buffer.from(TOSS_SECRET_KEY + ':').toStrin
 // ⚙️ 2단계: 미들웨어 설정
 // ============================================
 // 미들웨어 = 요청이 처리되기 전에 먼저 실행되는 함수
-// express.json(): 클라이언트가 보낸 JSON 데이터를 자동으로 파싱(분석)해줘요
+
+// 1) helmet: 보안 관련 HTTP 헤더를 자동으로 설정해줘요
+// (X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security 등)
+// 이를 통해 XSS, 클릭재킹 등의 공격을 방어할 수 있어요
+app.use(helmet());
+
+// 2) express.json(): 클라이언트가 보낸 JSON 데이터를 자동으로 파싱(분석)해줘요
 // 예: {"email": "test@test.com"} → req.body.email로 접근 가능
-app.use(express.json());
+// limit: '1mb' → 최대 1MB까지만 허용 (DoS 공격 방지)
+app.use(express.json({ limit: '1mb' }));
+
+// ============================================
+// 🛡️ 2-1단계: Rate Limiting 설정
+// ============================================
+// 브루트포스 공격(무차별 대입 공격)을 방어하기 위해
+// 같은 IP에서 너무 많은 요청을 보내면 일시적으로 차단해요
+
+// 로그인 API 전용 Rate Limiter (더 엄격하게 제한)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15분 시간 창
+  max: 5,  // 15분 동안 같은 IP에서 최대 5회 시도만 허용
+  message: { error: '너무 많은 로그인 시도입니다. 15분 후 다시 시도해주세요.' },
+  standardHeaders: true,   // Rate limit 정보를 응답 헤더에 포함 (RateLimit-* 헤더)
+  legacyHeaders: false,    // X-RateLimit-* 헤더는 사용 안 함 (구버전 호환 불필요)
+});
+
+// 결제 API 전용 Rate Limiter (조금 덜 엄격)
+const paymentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15분 시간 창
+  max: 10,  // 15분 동안 같은 IP에서 최대 10회 결제 요청만 허용
+  message: { error: '너무 많은 결제 요청입니다. 잠시 후 다시 시도해주세요.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ============================================
 // 🗄️ 3단계: 데이터베이스 연결
@@ -271,9 +349,16 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ error: '이메일, 비밀번호를 모두 입력해주세요' });
     }
 
-    // 비밀번호 최소 길이 검증
-    if (password.length < 6) {
-      return res.status(400).json({ error: '비밀번호는 6자 이상이어야 합니다' });
+    // 이메일 형식 검증 (validator 라이브러리 사용)
+    // 예: "invalid-email" → 차단, "test@example.com" → 통과
+    if (!validator.isEmail(email)) {
+      return res.status(400).json({ error: '올바른 이메일 형식이 아닙니다' });
+    }
+
+    // 비밀번호 강도 검증 (8자 이상, 대문자, 숫자, 특수문자 필수)
+    const passwordCheck = validatePasswordStrength(password);
+    if (!passwordCheck.valid) {
+      return res.status(400).json({ error: passwordCheck.error });
     }
 
     // --- 이메일 중복 확인 ---
@@ -317,8 +402,9 @@ app.post('/api/register', async (req, res) => {
 // 🔑 7단계: 로그인 API
 // ============================================
 // POST /api/login
-// 흐름: 사용자 조회 → 비밀번호 비교 → JWT 토큰 발급
-app.post('/api/login', async (req, res) => {
+// 흐름: Rate limiting 확인 → 사용자 조회 → 비밀번호 비교 → JWT 토큰 발급
+// loginLimiter: 같은 IP에서 15분에 5회까지만 시도 가능 (브루트포스 공격 방지)
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -398,14 +484,15 @@ app.get('/api/me', authenticateToken, async (req, res) => {
 // 💳 9단계: 결제 승인 API
 // ============================================
 // POST /api/payments/confirm
-// 흐름: 요청 검증 → 금액 검증 (중요!) → 토스페이먼츠 결제 승인 API 호출 → DB에 주문 저장
+// 흐름: Rate limiting 확인 → 인증 확인 → 요청 검증 → 금액 검증 (중요!) → 토스페이먼츠 결제 승인 API 호출 → DB에 주문 저장
 //
 // 토스페이먼츠 결제 과정:
 // 1. 프론트엔드에서 결제 위젯으로 결제 진행
 // 2. 결제 성공 시 /success?paymentKey=...&orderId=...&amount=... 로 리다이렉트
 // 3. 프론트엔드가 이 API를 호출하여 결제를 "승인" (이 단계에서 실제 결제 확정!)
 // 4. 서버가 금액을 검증한 후 토스페이먼츠 API에 승인 요청 → 성공하면 DB에 주문 저장
-app.post('/api/payments/confirm', authenticateToken, async (req, res) => {
+// paymentLimiter: 같은 IP에서 15분에 10회까지만 결제 요청 가능
+app.post('/api/payments/confirm', paymentLimiter, authenticateToken, async (req, res) => {
   try {
     const { paymentKey, orderId, amount, items } = req.body;
 
