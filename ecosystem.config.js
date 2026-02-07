@@ -11,7 +11,7 @@ module.exports = {
     script: 'server.js',
 
     // 프로덕션 환경변수
-    env: {
+    env_production: {
       NODE_ENV: 'production',
       PORT: 4000
     },

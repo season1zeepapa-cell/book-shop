@@ -31,6 +31,9 @@
   <!-- Babel: JSX 문법(HTML처럼 생긴 JavaScript)을 브라우저가 이해할 수 있게 변환 -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+  <!-- 토스페이먼츠 SDK v2: 결제 위젯을 렌더링하고 결제를 요청하는 도구 -->
+  <script src="https://js.tosspayments.com/v2/standard"></script>
+
   <style>
     /* 부드러운 스크롤 효과 */
     html { scroll-behavior: smooth; }
@@ -348,7 +351,7 @@
     // 🛒 5단계: 장바구니 패널 컴포넌트
     // ============================================
     // 오른쪽에서 슬라이드로 열리는 장바구니 화면
-    function CartPanel({ cart, onClose, onUpdateQuantity, onRemove }) {
+    function CartPanel({ cart, onClose, onUpdateQuantity, onRemove, onCheckout }) {
       // 총 금액 계산: 각 상품의 (가격 × 수량)을 모두 더함
       const totalPrice = cart.reduce(
         (sum, item) => sum + item.price * item.quantity,
@@ -486,8 +489,11 @@
                     {formatPrice(30000 - totalPrice)} 더 담으면 무료배송!
                   </p>
                 )}
-                {/* 주문하기 버튼 */}
-                <button className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors duration-200">
+                {/* 주문하기 버튼 — 클릭하면 결제 페이지로 이동 */}
+                <button
+                  onClick={onCheckout}
+                  className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors duration-200"
+                >
                   주문하기
                 </button>
               </div>
@@ -498,7 +504,301 @@
     }
 
     // ============================================
-    // 📖 6단계: 책 상세 모달 컴포넌트
+    // 💳 6단계: 결제 페이지 컴포넌트
+    // ============================================
+    // 토스페이먼츠 결제 위젯을 렌더링하고, "결제하기" 버튼을 누르면 결제를 진행해요
+    //
+    // 동작 흐름:
+    // 1. 컴포넌트가 화면에 나타남 (mount)
+    // 2. useEffect에서 토스페이먼츠 위젯 초기화
+    // 3. 결제 수단 선택 UI + 약관 동의 UI 렌더링
+    // 4. "결제하기" 버튼 클릭 → requestPayment() → 토스 결제 창 열림
+    // 5. 결제 완료 후 /success 또는 /fail로 리다이렉트
+    function CheckoutPage({ cart, user, onBack, showToast }) {
+      // 위젯 로딩 상태와 에러 상태
+      const [loading, setLoading] = React.useState(true);
+      const [error, setError] = React.useState('');
+      // useRef: 리렌더링 없이 값을 기억하는 도구 (위젯 인스턴스를 저장)
+      const widgetsRef = React.useRef(null);
+
+      // --- 금액 계산 ---
+      // 상품 금액 합계
+      const totalPrice = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      // 배송비: 3만원 이상이면 무료, 미만이면 3,000원
+      const shippingFee = totalPrice >= 30000 ? 0 : 3000;
+      // 최종 결제 금액
+      const finalAmount = totalPrice + shippingFee;
+
+      // 주문명 생성 (예: "모던 자바스크립트 Deep Dive 외 2건")
+      const orderName = cart.length === 1
+        ? cart[0].title
+        : cart[0].title + ' 외 ' + (cart.length - 1) + '건';
+
+      // --- 토스페이먼츠 위젯 초기화 ---
+      // 컴포넌트가 화면에 나타날 때 한 번만 실행돼요
+      React.useEffect(() => {
+        async function initWidget() {
+          try {
+            // 1. 토스페이먼츠 객체 생성 (클라이언트키 필요)
+            const clientKey = 'test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm';
+            // 로그인한 사용자의 고유 ID를 customerKey로 사용
+            const customerKey = 'bookshop_user_' + user.id;
+            const tossPayments = TossPayments(clientKey);
+
+            // 2. 결제 위젯 인스턴스 생성
+            const widgets = tossPayments.widgets({ customerKey });
+
+            // 3. 결제 금액 설정 (위젯 렌더링 전에 반드시 먼저 호출해야 해요)
+            await widgets.setAmount({
+              currency: 'KRW',    // 통화: 한국 원
+              value: finalAmount,  // 금액: 상품가 + 배송비
+            });
+
+            // 4. 결제 수단 선택 UI + 약관 동의 UI를 동시에 렌더링
+            // Promise.all: 두 작업을 동시에 실행하고 둘 다 끝날 때까지 대기
+            await Promise.all([
+              widgets.renderPaymentMethods({
+                selector: '#payment-method',  // 이 div 안에 결제 수단 UI가 그려져요
+                variantKey: 'DEFAULT',
+              }),
+              widgets.renderAgreement({
+                selector: '#agreement',       // 이 div 안에 약관 동의 UI가 그려져요
+                variantKey: 'AGREEMENT',
+              }),
+            ]);
+
+            // 위젯 인스턴스를 ref에 저장 (결제 요청 시 사용)
+            widgetsRef.current = widgets;
+            setLoading(false);
+          } catch (err) {
+            console.error('결제 위젯 초기화 오류:', err);
+            setError('결제 위젯을 불러오는데 실패했습니다');
+            setLoading(false);
+          }
+        }
+
+        initWidget();
+      }, []);
+
+      // --- 결제 요청 함수 ---
+      // "결제하기" 버튼을 누르면 실행돼요
+      async function handlePayment() {
+        if (!widgetsRef.current) return;
+
+        try {
+          // 주문 ID 생성: 타임스탬프 + 랜덤 문자열로 고유한 값을 만들어요
+          // 토스페이먼츠 규격: 6자 이상 64자 이하, 영문/숫자/-/_ 만 허용
+          const orderId = 'BOOKSHOP_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+
+          // 토스페이먼츠 결제 요청!
+          // 이 함수가 호출되면 토스 결제 창이 열리고,
+          // 결제가 완료되면 successUrl로, 실패하면 failUrl로 리다이렉트돼요
+          await widgetsRef.current.requestPayment({
+            orderId: orderId,
+            orderName: orderName,
+            successUrl: window.location.origin + '/success',
+            failUrl: window.location.origin + '/fail',
+            customerEmail: user.email,
+            customerName: user.email.split('@')[0],
+          });
+        } catch (err) {
+          // 사용자가 결제 창을 닫은 경우
+          if (err.code === 'USER_CANCEL') {
+            showToast('결제가 취소되었습니다');
+          } else {
+            showToast('결제 중 오류가 발생했습니다');
+          }
+        }
+      }
+
+      return (
+        <div className="min-h-screen bg-gray-50">
+          {/* 상단 헤더: 뒤로가기 + 제목 */}
+          <header className="bg-white shadow-sm sticky top-0 z-40">
+            <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-4">
+              <button onClick={onBack} className="text-gray-600 hover:text-gray-900 transition-colors">
+                {/* 왼쪽 화살표 아이콘 (뒤로가기) */}
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h1 className="text-xl font-bold text-gray-900">주문/결제</h1>
+            </div>
+          </header>
+
+          <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+            {/* === 주문 상품 요약 카드 === */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <h2 className="text-lg font-bold text-gray-900 mb-4">주문 상품</h2>
+              <div className="space-y-3">
+                {cart.map((item) => (
+                  <div key={item.id} className="flex items-center gap-3">
+                    <img src={item.image} alt={item.title} className="w-12 h-16 object-cover rounded" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{item.title}</p>
+                      <p className="text-xs text-gray-500">{item.author} | {item.quantity}권</p>
+                    </div>
+                    <p className="text-sm font-bold text-gray-900">{formatPrice(item.price * item.quantity)}</p>
+                  </div>
+                ))}
+              </div>
+              {/* 금액 합계 */}
+              <div className="border-t mt-4 pt-4 space-y-2">
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>상품 금액</span>
+                  <span>{formatPrice(totalPrice)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>배송비</span>
+                  <span>{shippingFee === 0 ? '무료' : formatPrice(shippingFee)}</span>
+                </div>
+                <div className="flex justify-between text-lg font-bold text-gray-900">
+                  <span>총 결제금액</span>
+                  <span className="text-primary">{formatPrice(finalAmount)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* === 결제 수단 위젯 (토스페이먼츠 SDK가 이 안에 UI를 그려줘요) === */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              {loading && (
+                <div className="text-center py-8">
+                  <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-gray-500 mt-3">결제 수단을 불러오는 중...</p>
+                </div>
+              )}
+              {error && (
+                <div className="text-center py-8">
+                  <p className="text-red-500">{error}</p>
+                </div>
+              )}
+              <div id="payment-method"></div>
+            </div>
+
+            {/* === 약관 동의 위젯 === */}
+            <div className="bg-white rounded-xl shadow-sm p-6">
+              <div id="agreement"></div>
+            </div>
+
+            {/* === 결제하기 버튼 === */}
+            <button
+              onClick={handlePayment}
+              disabled={loading || !!error}
+              className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors duration-200 disabled:opacity-50 text-lg"
+            >
+              {formatPrice(finalAmount)} 결제하기
+            </button>
+          </main>
+        </div>
+      );
+    }
+
+    // ============================================
+    // ✅ 결제 성공 페이지 컴포넌트
+    // ============================================
+    // 결제가 완료된 후 보여주는 화면이에요
+    // 주문번호, 결제금액, 결제수단 등의 정보를 표시합니다
+    function SuccessPage({ result, onGoHome }) {
+      // result가 아직 없으면 (서버 승인 처리 중) 로딩 표시
+      if (!result) {
+        return (
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="text-center">
+              <div className="inline-block w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-gray-500 mt-4">결제 승인 처리 중...</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-lg max-w-md w-full p-8 text-center">
+            {/* 성공 체크 아이콘 (초록색 원 안에 체크) */}
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">결제가 완료되었습니다</h2>
+            <p className="text-gray-500 mb-6">주문이 정상적으로 접수되었습니다</p>
+
+            {/* 주문 상세 정보 */}
+            {result.data && (
+              <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">주문번호</span>
+                  <span className="font-medium text-gray-900">{result.data.orderId}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">결제금액</span>
+                  <span className="font-bold text-primary">
+                    {formatPrice(result.data.totalAmount)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">결제수단</span>
+                  <span className="font-medium text-gray-900">{result.data.method || '카드'}</span>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                // 브라우저 URL을 홈(/)으로 깨끗하게 변경 (뒤로가기 시 /success로 안 감)
+                window.history.replaceState(null, '', '/');
+                onGoHome();
+              }}
+              className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
+            >
+              홈으로 돌아가기
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // ❌ 결제 실패 페이지 컴포넌트
+    // ============================================
+    // 결제가 실패했을 때 보여주는 화면이에요
+    // 에러 코드와 메시지를 표시합니다
+    function FailPage({ result, onGoHome }) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-lg max-w-md w-full p-8 text-center">
+            {/* 실패 X 아이콘 (빨간색 원 안에 X) */}
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">결제에 실패했습니다</h2>
+            <p className="text-gray-500 mb-6">
+              {result?.message || '알 수 없는 오류가 발생했습니다'}
+            </p>
+
+            {/* 에러 코드 표시 */}
+            {result?.code && (
+              <p className="text-xs text-gray-400 mb-6">오류 코드: {result.code}</p>
+            )}
+
+            <button
+              onClick={() => {
+                window.history.replaceState(null, '', '/');
+                onGoHome();
+              }}
+              className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-colors"
+            >
+              홈으로 돌아가기
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ============================================
+    // 📖 7단계: 책 상세 모달 컴포넌트
     // ============================================
     function BookDetail({ book, onClose, onAddToCart }) {
       if (!book) return null;
@@ -827,6 +1127,14 @@
       const [showRegister, setShowRegister] = React.useState(false);
       // showRegister: 회원가입 모달을 보여줄지 여부
 
+      // === 결제 관련 상태 ===
+      const [currentPage, setCurrentPage] = React.useState('home');
+      // currentPage: 현재 표시 중인 페이지
+      // 'home' = 메인 페이지, 'checkout' = 결제 페이지, 'success' = 성공, 'fail' = 실패
+
+      const [paymentResult, setPaymentResult] = React.useState(null);
+      // paymentResult: 결제 승인 결과 데이터 (성공/실패 페이지에서 사용)
+
       // === 페이지 로드 시 자동 로그인 확인 ===
       // useEffect: 컴포넌트가 처음 화면에 나타날 때 한 번 실행되는 함수
       // (빈 배열 []을 넣으면 "처음 한 번만" 실행)
@@ -848,6 +1156,103 @@
           .catch(() => localStorage.removeItem('token'));
         }
       }, []);
+
+      // === 결제 결과 URL 감지 ===
+      // 토스페이먼츠 결제가 완료되면 /success 또는 /fail로 리다이렉트돼요
+      // 이 useEffect가 URL을 감지해서 적절한 페이지를 보여줍니다
+      React.useEffect(() => {
+        const pathname = window.location.pathname;
+        const urlParams = new URLSearchParams(window.location.search);
+
+        if (pathname === '/success') {
+          // 결제 성공 리다이렉트 감지!
+          setCurrentPage('success');
+          // URL에서 결제 정보 추출
+          const paymentKey = urlParams.get('paymentKey');
+          const orderId = urlParams.get('orderId');
+          const amount = urlParams.get('amount');
+
+          if (paymentKey && orderId && amount) {
+            // 서버에 결제 승인 요청 보내기
+            confirmPayment(paymentKey, orderId, parseInt(amount));
+          }
+        } else if (pathname === '/fail') {
+          // 결제 실패 리다이렉트 감지
+          setCurrentPage('fail');
+          setPaymentResult({
+            success: false,
+            code: urlParams.get('code'),
+            message: urlParams.get('message'),
+          });
+        }
+      }, []);
+
+      // === 결제 승인 요청 함수 ===
+      // 토스페이먼츠 리다이렉트 후 서버에 결제를 "확정"하는 요청을 보내요
+      // 이 단계가 있어야 실제로 결제가 완료됩니다!
+      async function confirmPayment(paymentKey, orderId, amount) {
+        try {
+          const token = localStorage.getItem('token');
+          const response = await fetch('/api/payments/confirm', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token,
+            },
+            body: JSON.stringify({
+              paymentKey,
+              orderId,
+              amount,
+              // 장바구니 상품 정보도 함께 전달 (DB에 저장용)
+              items: cart.map(item => ({
+                bookId: item.id,
+                title: item.title,
+                author: item.author,
+                price: item.price,
+                quantity: item.quantity,
+              })),
+            }),
+          });
+
+          const data = await response.json();
+
+          if (response.ok) {
+            // 결제 승인 성공!
+            setPaymentResult({ success: true, data });
+            setCart([]); // 장바구니 비우기
+          } else {
+            // 결제 승인 실패
+            setPaymentResult({
+              success: false,
+              code: data.code || 'CONFIRM_ERROR',
+              message: data.message || '결제 승인에 실패했습니다',
+            });
+          }
+        } catch (error) {
+          setPaymentResult({
+            success: false,
+            code: 'NETWORK_ERROR',
+            message: '서버 연결에 실패했습니다',
+          });
+        }
+      }
+
+      // === 주문하기 버튼 핸들러 ===
+      // 장바구니의 "주문하기" 버튼을 누르면 실행돼요
+      function handleCheckout() {
+        // 로그인 확인: 결제하려면 반드시 로그인해야 해요
+        if (!user) {
+          setIsCartOpen(false);
+          setShowLogin(true);
+          showToast('주문하려면 로그인이 필요합니다');
+          return;
+        }
+        // 장바구니가 비어있으면 아무것도 안 함
+        if (cart.length === 0) return;
+        // 장바구니 패널 닫고 결제 페이지로 이동
+        setIsCartOpen(false);
+        setCurrentPage('checkout');
+      }
 
       // === 로그아웃 함수 ===
       function handleLogout() {
@@ -925,6 +1330,44 @@
       const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
       // --- 화면 렌더링 ---
+      // currentPage에 따라 다른 페이지를 보여줘요
+      // 'checkout' → 결제 페이지, 'success' → 성공 페이지, 'fail' → 실패 페이지
+      if (currentPage === 'checkout') {
+        return (
+          <CheckoutPage
+            cart={cart}
+            user={user}
+            onBack={() => setCurrentPage('home')}
+            showToast={showToast}
+          />
+        );
+      }
+
+      if (currentPage === 'success') {
+        return (
+          <SuccessPage
+            result={paymentResult}
+            onGoHome={() => {
+              setCurrentPage('home');
+              setPaymentResult(null);
+            }}
+          />
+        );
+      }
+
+      if (currentPage === 'fail') {
+        return (
+          <FailPage
+            result={paymentResult}
+            onGoHome={() => {
+              setCurrentPage('home');
+              setPaymentResult(null);
+            }}
+          />
+        );
+      }
+
+      // currentPage === 'home' → 기존 메인 페이지
       return (
         <div className="min-h-screen bg-gray-50">
           {/* min-h-screen: 최소 높이를 화면 전체로 (내용이 적어도 배경이 꽉 참) */}
@@ -1171,6 +1614,7 @@
               onClose={() => setIsCartOpen(false)}
               onUpdateQuantity={updateQuantity}
               onRemove={removeFromCart}
+              onCheckout={handleCheckout}
             />
           )}
 
