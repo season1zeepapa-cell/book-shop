@@ -1971,9 +1971,20 @@
       const [booksLoading, setBooksLoading] = React.useState(true);
       // booksLoading: 책 데이터를 불러오는 중인지
 
-      const [cart, setCart] = React.useState([]);
       // cart: 장바구니에 담긴 책 목록 (배열)
-      // setCart: cart 값을 바꾸는 함수
+      // localStorage에서 장바구니를 복원해요 (토스 결제 후 리다이렉트 시 데이터 유지 목적)
+      // 결제 완료 → 토스가 /success로 리다이렉트 → 페이지 새로고침 → cart가 [] 초기화되는 문제 방지!
+      const [cart, setCart] = React.useState(() => {
+        try {
+          const saved = localStorage.getItem('cart');
+          return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+      });
+
+      // cart가 변경될 때마다 localStorage에 저장 (새로고침 후에도 복원 가능)
+      React.useEffect(() => {
+        localStorage.setItem('cart', JSON.stringify(cart));
+      }, [cart]);
 
       const [isCartOpen, setIsCartOpen] = React.useState(false);
       // isCartOpen: 장바구니 패널이 열려있는지 (true/false)
