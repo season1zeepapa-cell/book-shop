@@ -131,7 +131,30 @@ const encryptedSecretKey = 'Basic ' + Buffer.from(TOSS_SECRET_KEY + ':').toStrin
 // 1) helmet: 보안 관련 HTTP 헤더를 자동으로 설정해줘요
 // (X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security 등)
 // 이를 통해 XSS, 클릭재킹 등의 공격을 방어할 수 있어요
-app.use(helmet());
+//
+// ⚠️ CSP(Content Security Policy)를 프로젝트에 맞게 설정해야 해요!
+// 기본값은 'self'만 허용해서 CDN 스크립트(React, Babel 등)를 차단해요
+// 이 프로젝트는 빌드 도구 없이 CDN으로 라이브러리를 로드하므로 명시적 허용 필요
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        "'unsafe-inline'",   // 인라인 스크립트 허용 (Tailwind config, Babel 코드)
+        "'unsafe-eval'",     // eval 허용 (Babel standalone이 JSX 변환에 사용)
+        "https://unpkg.com",             // React, ReactDOM, Babel CDN
+        "https://cdn.tailwindcss.com",   // Tailwind CSS CDN
+        "https://js.tosspayments.com",   // 토스페이먼츠 SDK
+      ],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://api.tosspayments.com"],
+      frameSrc: ["'self'", "https://*.tosspayments.com"],  // 토스 결제 위젯 iframe
+      fontSrc: ["'self'", "https:"],
+    },
+  },
+}));
 
 // 2) express.json(): 클라이언트가 보낸 JSON 데이터를 자동으로 파싱(분석)해줘요
 // 예: {"email": "test@test.com"} → req.body.email로 접근 가능
