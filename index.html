@@ -1738,6 +1738,9 @@
       const [searchQuery, setSearchQuery] = React.useState("");
       // searchQuery: 검색창에 입력된 텍스트
 
+      const [visibleCount, setVisibleCount] = React.useState(5);
+      // visibleCount: 현재 화면에 보이는 상품 수 (기본 5개, 더보기로 5개씩 추가)
+
       const [selectedBook, setSelectedBook] = React.useState(null);
       // selectedBook: 상세보기로 선택된 책 (없으면 null)
 
@@ -2076,7 +2079,7 @@
                       type="text"
                       placeholder="책 제목, 저자로 검색..."
                       value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(5); }}
                       className="w-full pl-10 pr-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-gray-50"
                       /* pl-10: 왼쪽 안쪽 여백 40px (돋보기 아이콘 공간 확보) */
                       /* rounded-full: 완전한 둥근 모서리 (알약 모양) */
@@ -2158,7 +2161,7 @@
                     type="text"
                     placeholder="책 제목, 저자로 검색..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(5); }}
                     className="w-full pl-10 pr-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-gray-50"
                   />
                 </div>
@@ -2266,7 +2269,7 @@
               {categories.map((category) => (
                 <button
                   key={category}
-                  onClick={() => setSelectedCategory(category)}
+                  onClick={() => { setSelectedCategory(category); setVisibleCount(5); }}
                   className={`px-4 py-2 rounded-full text-sm font-medium transition-colors duration-200 ${
                     /* 선택된 카테고리는 파란색 배경, 나머지는 회색 배경 */
                     selectedCategory === category
@@ -2282,6 +2285,9 @@
             {/* 검색 결과 개수 */}
             <p className="text-sm text-gray-500 mb-4">
               {filteredBooks.length}권의 책이 있습니다
+              {filteredBooks.length > visibleCount && (
+                <span className="text-gray-400"> (현재 {Math.min(visibleCount, filteredBooks.length)}개 표시)</span>
+              )}
             </p>
 
             {/* 책 카드 그리드 (격자 배열) */}
@@ -2291,21 +2297,26 @@
                 <p className="text-gray-500 mt-4">상품을 불러오는 중...</p>
               </div>
             ) : filteredBooks.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {/*
-                  grid: 격자 레이아웃
-                  grid-cols-1: 기본(모바일) 1열
-                  sm:grid-cols-2: 640px 이상에서 2열
-                  lg:grid-cols-3: 1024px 이상에서 3열
-                  xl:grid-cols-4: 1280px 이상에서 4열
-                  gap-6: 카드 사이 간격 24px
-                */}
-                {filteredBooks.map((book) => (
-                  <div key={book.id} onClick={() => setSelectedBook(book)} className="cursor-pointer">
-                    <BookCard book={book} onAddToCart={addToCart} />
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                  {filteredBooks.slice(0, visibleCount).map((book) => (
+                    <div key={book.id} onClick={() => setSelectedBook(book)} className="cursor-pointer">
+                      <BookCard book={book} onAddToCart={addToCart} />
+                    </div>
+                  ))}
+                </div>
+                {/* 더보기 버튼: 아직 안 보이는 상품이 있을 때만 표시 */}
+                {visibleCount < filteredBooks.length && (
+                  <div className="text-center mt-8">
+                    <button
+                      onClick={() => setVisibleCount(prev => prev + 5)}
+                      className="bg-white border-2 border-primary text-primary hover:bg-primary hover:text-white px-8 py-3 rounded-full font-medium transition-colors"
+                    >
+                      더보기 ({filteredBooks.length - visibleCount}개 남음)
+                    </button>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             ) : (
               /* 검색 결과가 없을 때 */
               <div className="text-center py-16">
