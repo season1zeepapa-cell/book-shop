@@ -1094,14 +1094,24 @@
         <section className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
             {recentBooks.length > 0 && currentBook ? (
-              <div className="flex flex-col sm:flex-row items-center gap-8">
+              <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
+                {/* 이미지: 모바일에서는 위쪽에 표시, PC에서는 오른쪽 */}
+                <div className="flex-shrink-0 order-first sm:order-last">
+                  <img
+                    src={currentBook.image}
+                    alt={currentBook.title}
+                    className="w-32 h-44 sm:w-44 sm:h-64 object-contain rounded-xl shadow-2xl transition-all duration-500 bg-white"
+                    style={{ boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}
+                  />
+                </div>
+                {/* 텍스트: 모바일에서는 아래쪽, PC에서는 왼쪽 */}
                 <div className="flex-1 text-center sm:text-left">
                   <p className="text-blue-200 text-sm font-medium mb-2">최근 등록된 책</p>
                   <h2 className="text-2xl sm:text-3xl font-extrabold leading-tight transition-all duration-500">
                     {currentBook.title}
                   </h2>
                   <p className="mt-2 text-blue-100 text-sm">{currentBook.author}</p>
-                  <p className="mt-3 text-blue-100 text-sm line-clamp-2 max-w-lg">
+                  <p className="mt-3 text-blue-100 text-sm line-clamp-2 max-w-lg mx-auto sm:mx-0">
                     {currentBook.description || ''}
                   </p>
                   <div className="mt-4 flex items-center gap-3 justify-center sm:justify-start">
@@ -1127,14 +1137,6 @@
                       />
                     ))}
                   </div>
-                </div>
-                <div className="flex-shrink-0">
-                  <img
-                    src={currentBook.image}
-                    alt={currentBook.title}
-                    className="w-36 h-52 sm:w-44 sm:h-64 object-contain rounded-xl shadow-2xl transition-all duration-500 bg-white"
-                    style={{ boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}
-                  />
                 </div>
               </div>
             ) : (
