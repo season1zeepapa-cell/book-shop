@@ -36,13 +36,32 @@ pm2 restart ecosystem.config.js --env production 2>/dev/null || pm2 start ecosys
 # 5단계: PM2 프로세스 목록 저장 (서버 재부팅 시 자동 시작을 위해)
 pm2 save
 
-# 6단계: Nginx 설정 리로드 (HTTPS 리버스 프록시)
-# Nginx가 설치되어 있을 때만 실행
+# 6단계: Nginx 설정 동기화 및 리로드
+# 프로젝트의 Nginx 설정 파일이 변경되었을 수 있으므로 항상 동기화
 if command -v nginx &> /dev/null; then
-  echo "🔄 Nginx 설정을 리로드하는 중..."
-  sudo nginx -s reload
+  echo "🔄 Nginx 설정을 동기화하는 중..."
+  sudo cp "$APP_DIR/nginx/bookshop.conf" /etc/nginx/sites-available/bookshop
+  sudo ln -sf /etc/nginx/sites-available/bookshop /etc/nginx/sites-enabled/bookshop
+
+  # 설정 문법 검사 후 리로드
+  if sudo nginx -t 2>/dev/null; then
+    sudo nginx -s reload
+    echo "✅ Nginx 설정 리로드 완료"
+  else
+    echo "⚠️ Nginx 설정에 문제가 있습니다. 이전 설정으로 계속 동작합니다."
+  fi
 fi
 
+# 7단계: 헬스체크 (서버가 정상 응답하는지 확인)
+echo "🏥 헬스체크 중..."
+sleep 2
+if curl -sf http://127.0.0.1:4000/api/books > /dev/null 2>&1; then
+  echo "✅ 서버가 정상 응답합니다!"
+else
+  echo "⚠️ 서버가 아직 시작 중이거나 응답하지 않습니다. 로그를 확인하세요: pm2 logs book-shop"
+fi
+
+echo ""
 echo "✅ book-shop 배포가 완료되었습니다!"
 echo "📊 현재 PM2 상태:"
 pm2 list

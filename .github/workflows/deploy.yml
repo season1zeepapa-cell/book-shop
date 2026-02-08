@@ -40,3 +40,9 @@ jobs:
           key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
           script: |
             bash /home/ubuntu/book-shop/scripts/deploy.sh
+
+      # 3단계: HTTPS 헬스체크 (배포 후 사이트 접속 확인)
+      - name: Health check
+        run: |
+          sleep 5
+          curl -sf --max-time 10 https://bookshop.aifac.click/api/books > /dev/null && echo "Health check passed" || echo "Warning: Health check failed"
