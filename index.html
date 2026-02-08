@@ -1031,6 +1031,94 @@
     // 관리자만 접근할 수 있는 페이지예요
     // 상품 등록/수정/삭제, 주문 조회/상태 변경을 할 수 있어요
 
+    // --- 히어로 배너 (최근 등록 책 롤링) ---
+    function HeroSection({ books, onSelectBook }) {
+      const recentBooks = React.useMemo(
+        () => [...books].sort((a, b) => b.id - a.id).slice(0, 5),
+        [books]
+      );
+      const [heroIndex, setHeroIndex] = React.useState(0);
+
+      React.useEffect(() => {
+        if (recentBooks.length === 0) return;
+        const timer = setInterval(() => {
+          setHeroIndex(prev => (prev + 1) % recentBooks.length);
+        }, 3500);
+        return () => clearInterval(timer);
+      }, [recentBooks.length]);
+
+      const currentBook = recentBooks[heroIndex];
+
+      return (
+        <section className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+            {recentBooks.length > 0 && currentBook ? (
+              <div className="flex flex-col sm:flex-row items-center gap-8">
+                <div className="flex-1 text-center sm:text-left">
+                  <p className="text-blue-200 text-sm font-medium mb-2">최근 등록된 책</p>
+                  <h2 className="text-2xl sm:text-3xl font-extrabold leading-tight transition-all duration-500">
+                    {currentBook.title}
+                  </h2>
+                  <p className="mt-2 text-blue-100 text-sm">{currentBook.author}</p>
+                  <p className="mt-3 text-blue-100 text-sm line-clamp-2 max-w-lg">
+                    {currentBook.description || ''}
+                  </p>
+                  <div className="mt-4 flex items-center gap-3 justify-center sm:justify-start">
+                    <span className="text-2xl font-bold">{formatPrice(currentBook.price)}</span>
+                    {currentBook.original_price > currentBook.price && (
+                      <span className="text-blue-200 line-through text-sm">{formatPrice(currentBook.original_price)}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => onSelectBook(currentBook)}
+                    className="mt-4 bg-white text-primary font-bold px-6 py-2 rounded-full hover:bg-blue-50 transition-colors text-sm"
+                  >
+                    자세히 보기
+                  </button>
+                  <div className="mt-5 flex gap-2 justify-center sm:justify-start">
+                    {recentBooks.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setHeroIndex(i)}
+                        className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                          i === heroIndex ? 'bg-white w-6' : 'bg-white bg-opacity-40'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex-shrink-0">
+                  <img
+                    src={currentBook.image}
+                    alt={currentBook.title}
+                    className="w-36 h-52 sm:w-44 sm:h-64 object-cover rounded-xl shadow-2xl transition-all duration-500"
+                    style={{ boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="text-center">
+                <h2 className="text-3xl sm:text-4xl font-extrabold">
+                  당신의 다음 책을 만나보세요
+                </h2>
+                <p className="mt-4 text-lg text-blue-100 max-w-2xl mx-auto">
+                  베스트셀러부터 숨겨진 명작까지, 다양한 책을 만나볼 수 있는 곳
+                </p>
+              </div>
+            )}
+            <div className="mt-6 flex justify-center gap-4">
+              <span className="bg-white bg-opacity-20 px-4 py-2 rounded-full text-sm">
+                3만원 이상 무료배송
+              </span>
+              <span className="bg-white bg-opacity-20 px-4 py-2 rounded-full text-sm">
+                최대 10% 할인
+              </span>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
     // --- 상품 등록/수정 폼 모달 ---
     function BookFormModal({ book, onClose, onSave }) {
       // book이 있으면 수정 모드, 없으면 등록 모드
@@ -2170,95 +2258,8 @@
             </div>
           </header>
 
-          {/* ========== 히어로 배너 (메인 이미지 영역 + 최근 등록 롤링) ========== */}
-          {(() => {
-            // 최근 등록된 책 5권 (id가 큰 순서 = 최근 등록순)
-            const recentBooks = [...books].sort((a, b) => b.id - a.id).slice(0, 5);
-            // 현재 보여줄 책의 인덱스 (자동 롤링)
-            const [heroIndex, setHeroIndex] = React.useState(0);
-
-            React.useEffect(() => {
-              if (recentBooks.length === 0) return;
-              const timer = setInterval(() => {
-                setHeroIndex(prev => (prev + 1) % recentBooks.length);
-              }, 3500); // 3.5초마다 다음 책으로
-              return () => clearInterval(timer);
-            }, [recentBooks.length]);
-
-            const currentBook = recentBooks[heroIndex];
-
-            return (
-              <section className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
-                  {recentBooks.length > 0 && currentBook ? (
-                    <div className="flex flex-col sm:flex-row items-center gap-8">
-                      {/* 왼쪽: 텍스트 영역 */}
-                      <div className="flex-1 text-center sm:text-left">
-                        <p className="text-blue-200 text-sm font-medium mb-2">최근 등록된 책</p>
-                        <h2 className="text-2xl sm:text-3xl font-extrabold leading-tight transition-all duration-500">
-                          {currentBook.title}
-                        </h2>
-                        <p className="mt-2 text-blue-100 text-sm">{currentBook.author}</p>
-                        <p className="mt-3 text-blue-100 text-sm line-clamp-2 max-w-lg">
-                          {currentBook.description || ''}
-                        </p>
-                        <div className="mt-4 flex items-center gap-3 justify-center sm:justify-start">
-                          <span className="text-2xl font-bold">{formatPrice(currentBook.price)}</span>
-                          {currentBook.original_price > currentBook.price && (
-                            <span className="text-blue-200 line-through text-sm">{formatPrice(currentBook.original_price)}</span>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => setSelectedBook(currentBook)}
-                          className="mt-4 bg-white text-primary font-bold px-6 py-2 rounded-full hover:bg-blue-50 transition-colors text-sm"
-                        >
-                          자세히 보기
-                        </button>
-                        {/* 인디케이터 점 */}
-                        <div className="mt-5 flex gap-2 justify-center sm:justify-start">
-                          {recentBooks.map((_, i) => (
-                            <button
-                              key={i}
-                              onClick={() => setHeroIndex(i)}
-                              className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                                i === heroIndex ? 'bg-white w-6' : 'bg-white bg-opacity-40'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                      {/* 오른쪽: 책 이미지 */}
-                      <div className="flex-shrink-0">
-                        <img
-                          src={currentBook.image}
-                          alt={currentBook.title}
-                          className="w-36 h-52 sm:w-44 sm:h-64 object-cover rounded-xl shadow-2xl transition-all duration-500"
-                          style={{ boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <h2 className="text-3xl sm:text-4xl font-extrabold">
-                        당신의 다음 책을 만나보세요
-                      </h2>
-                      <p className="mt-4 text-lg text-blue-100 max-w-2xl mx-auto">
-                        베스트셀러부터 숨겨진 명작까지, 다양한 책을 만나볼 수 있는 곳
-                      </p>
-                    </div>
-                  )}
-                  <div className="mt-6 flex justify-center gap-4">
-                    <span className="bg-white bg-opacity-20 px-4 py-2 rounded-full text-sm">
-                      3만원 이상 무료배송
-                    </span>
-                    <span className="bg-white bg-opacity-20 px-4 py-2 rounded-full text-sm">
-                      최대 10% 할인
-                    </span>
-                  </div>
-                </div>
-              </section>
-            );
-          })()}
+          {/* ========== 히어로 배너 (최근 등록 책 롤링) ========== */}
+          <HeroSection books={books} onSelectBook={setSelectedBook} />
 
           {/* ========== 메인 콘텐츠 영역 ========== */}
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
