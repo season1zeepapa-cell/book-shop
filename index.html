@@ -142,7 +142,7 @@
         : 0;
 
       return (
-        <div className="book-card bg-white rounded-xl shadow-md overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col">
+        <div className="book-card bg-white rounded-xl shadow-md overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col h-full">
           {/*
             책 표지 이미지 영역
             relative: 배지를 이미지 위에 겹쳐놓기 위해 사용
@@ -2533,7 +2533,7 @@
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
                   {filteredBooks.slice(0, visibleCount).map((book) => (
-                    <div key={book.id} onClick={() => setSelectedBook(book)} className="cursor-pointer">
+                    <div key={book.id} onClick={() => setSelectedBook(book)} className="cursor-pointer h-full">
                       <BookCard book={book} onAddToCart={addToCart} />
                     </div>
                   ))}
