@@ -2440,7 +2440,8 @@
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               {/* max-w-7xl: 최대 너비 제한 (너무 넓은 화면에서 가운데 정렬) */}
               {/* mx-auto: 좌우 마진 자동 → 가운데 정렬 */}
-              <div className="flex items-center justify-between h-16">
+              {/* === 1줄: 로고 + (PC 검색바) + (PC 사용자 메뉴) + 장바구니 === */}
+              <div className="flex items-center justify-between h-14 sm:h-16">
 
                 {/* 로고 — 클릭하면 홈으로 이동 + 새로고침 */}
                 <button
@@ -2455,78 +2456,51 @@
                   </h1>
                 </button>
 
-                {/* 검색바 */}
+                {/* PC 검색바 */}
                 <div className="flex-1 max-w-lg mx-8 hidden sm:block">
-                  {/* hidden sm:block: 작은 화면에서는 숨기고, sm(640px) 이상에서 표시 */}
                   <div className="relative">
-                    {/* 돋보기 아이콘 */}
                     <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                    {/* 검색 입력창 */}
                     <input
                       type="text"
                       placeholder="책 제목, 저자로 검색..."
                       value={searchQuery}
                       onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(defaultCount); }}
                       className="w-full pl-10 pr-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent bg-gray-50"
-                      /* pl-10: 왼쪽 안쪽 여백 40px (돋보기 아이콘 공간 확보) */
-                      /* rounded-full: 완전한 둥근 모서리 (알약 모양) */
-                      /* focus:ring-2: 클릭(포커스)하면 파란색 테두리 강조 */
                     />
                   </div>
                 </div>
 
-                {/* ===== 로그인/사용자 정보 + 장바구니 영역 ===== */}
-                <div className="flex items-center gap-1.5 sm:gap-3">
-                  {user ? (
-                    /* 로그인 되었을 때: 사용자 이름 + 로그아웃 버튼 */
-                    <div className="flex items-center gap-1.5 sm:gap-2">
-                      {/* 사용자 아이콘 */}
-                      <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                      <span className="text-xs sm:text-sm font-medium text-gray-700 max-w-[120px] sm:max-w-none truncate">
-                        {user.email}님
-                      </span>
-                      {/* 마이페이지 버튼: 로그인한 모든 사용자에게 표시 */}
-                      <button
-                        onClick={() => setCurrentPage('mypage')}
-                        className="text-xs sm:text-sm text-gray-600 hover:text-primary font-medium transition-colors"
-                      >
-                        마이페이지
-                      </button>
-                      {/* 관리자 버튼: role이 'admin'인 경우에만 표시 */}
-                      {user.role === 'admin' && (
-                        <button
-                          onClick={() => setCurrentPage('admin')}
-                          className="text-xs sm:text-sm bg-gray-800 text-white px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg hover:bg-gray-900 transition-colors"
-                        >
-                          관리자
-                        </button>
-                      )}
-                      <button
-                        onClick={handleLogout}
-                        className="text-xs sm:text-sm text-gray-500 hover:text-gray-700 transition-colors"
-                      >
-                        로그아웃
-                      </button>
-                    </div>
-                  ) : (
-                    /* 로그인 안 되었을 때: 로그인/회원가입 버튼 */
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowLogin(true)}
-                        className="text-sm font-medium text-gray-600 hover:text-primary transition-colors"
-                      >
-                        로그인
-                      </button>
-                      <button
-                        onClick={() => setShowRegister(true)}
-                        className="text-sm bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        회원가입
-                      </button>
+                {/* PC 사용자 메뉴 (sm 이상) + 장바구니 */}
+                <div className="flex items-center gap-3">
+                  {/* PC 전용 사용자 메뉴 */}
+                  <div className="hidden sm:flex items-center gap-2">
+                    {user ? (
+                      <>
+                        <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span className="text-sm font-medium text-gray-700">{user.email}님</span>
+                        <button onClick={() => setCurrentPage('mypage')} className="text-sm text-gray-600 hover:text-primary font-medium transition-colors">마이페이지</button>
+                        {user.role === 'admin' && (
+                          <button onClick={() => setCurrentPage('admin')} className="text-sm bg-gray-800 text-white px-3 py-1.5 rounded-lg hover:bg-gray-900 transition-colors">관리자</button>
+                        )}
+                        <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">로그아웃</button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => setShowLogin(true)} className="text-sm font-medium text-gray-600 hover:text-primary transition-colors">로그인</button>
+                        <button onClick={() => setShowRegister(true)} className="text-sm bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">회원가입</button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 모바일: 비로그인 시 로그인/회원가입 (1줄에 표시) */}
+                  {!user && (
+                    <div className="flex sm:hidden items-center gap-2">
+                      <button onClick={() => setShowLogin(true)} className="text-sm font-medium text-gray-600 hover:text-primary transition-colors">로그인</button>
+                      <button onClick={() => setShowRegister(true)} className="text-xs bg-primary text-white px-2.5 py-1 rounded-lg hover:bg-blue-700 transition-colors">회원가입</button>
                     </div>
                   )}
 
@@ -2546,6 +2520,25 @@
                   </button>
                 </div>
               </div>
+
+              {/* === 모바일 2줄: 로그인된 사용자 메뉴 (sm 미만에서만 표시) === */}
+              {user && (
+                <div className="sm:hidden flex items-center justify-between pb-2 -mt-1">
+                  <div className="flex items-center gap-1.5">
+                    <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    <span className="text-xs font-medium text-gray-700 truncate max-w-[140px]">{user.email}님</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setCurrentPage('mypage')} className="text-xs text-gray-600 hover:text-primary font-medium transition-colors">마이페이지</button>
+                    {user.role === 'admin' && (
+                      <button onClick={() => setCurrentPage('admin')} className="text-xs bg-gray-800 text-white px-2 py-0.5 rounded hover:bg-gray-900 transition-colors">관리자</button>
+                    )}
+                    <button onClick={handleLogout} className="text-xs text-gray-500 hover:text-gray-700 transition-colors">로그아웃</button>
+                  </div>
+                </div>
+              )}
 
               {/* 모바일용 검색바 (작은 화면에서만 표시) */}
               <div className="sm:hidden pb-3">
