@@ -1094,7 +1094,7 @@
         <section className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
             {recentBooks.length > 0 && currentBook ? (
-              {/* "최근 등록된 책" — 모바일에서 이미지 위 최상단 표시 */}
+              <>
               <p className="text-blue-200 text-sm font-medium mb-4 text-center sm:hidden">최근 등록된 책</p>
               <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
                 {/* 이미지: 모바일에서는 위쪽에 표시, PC에서는 오른쪽 */}
@@ -1141,6 +1141,7 @@
                   </div>
                 </div>
               </div>
+              </>
             ) : (
               <div className="text-center">
                 <h2 className="text-3xl sm:text-4xl font-extrabold">
