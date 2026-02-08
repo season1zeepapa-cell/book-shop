@@ -1049,9 +1049,53 @@
       const [loading, setLoading] = React.useState(false);
       const [error, setError] = React.useState('');
 
+      // === Google Books 검색 관련 state ===
+      const [searchQuery, setSearchQuery] = React.useState('');   // 검색어
+      const [searchResults, setSearchResults] = React.useState([]); // 검색 결과
+      const [searching, setSearching] = React.useState(false);     // 검색 중 여부
+      const [searched, setSearched] = React.useState(false);       // 검색 실행 여부
+
       // 입력값 변경 핸들러
       function handleChange(e) {
         setForm({ ...form, [e.target.name]: e.target.value });
+      }
+
+      // Google Books 검색 함수
+      async function handleSearch() {
+        if (!searchQuery.trim()) return;
+        setSearching(true);
+        setSearched(true);
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch('/api/admin/books/search?q=' + encodeURIComponent(searchQuery), {
+            headers: { 'Authorization': 'Bearer ' + token },
+          });
+          const data = await res.json();
+          if (res.ok) {
+            setSearchResults(data.books || []);
+          } else {
+            setSearchResults([]);
+          }
+        } catch (err) {
+          setSearchResults([]);
+        }
+        setSearching(false);
+      }
+
+      // 검색 결과 클릭 → 폼 자동 채우기
+      function handleSelectBook(result) {
+        setForm({
+          ...form,
+          title: result.title,
+          author: result.author,
+          description: result.description,
+          image: result.image,
+          category: result.category,
+          rating: result.rating || '',
+          // price, original_price, badge는 수동 입력
+        });
+        setSearchResults([]); // 검색 결과 닫기
+        setSearched(false);
       }
 
       // 저장 버튼 핸들러
@@ -1104,6 +1148,58 @@
               {isEdit ? '상품 수정' : '새 상품 등록'}
             </h2>
 
+            {/* === Google Books 검색 섹션 (등록 모드에서만 표시) === */}
+            {!isEdit && (
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                <label className="block text-sm font-medium text-primary mb-2">
+                  Google Books에서 검색하여 자동 입력
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearch(); } }}
+                    placeholder="책 제목 또는 저자 검색..."
+                    className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSearch}
+                    disabled={searching}
+                    className="bg-primary hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {searching ? '검색중...' : '검색'}
+                  </button>
+                </div>
+
+                {/* 검색 결과 리스트 */}
+                {searched && searchResults.length > 0 && (
+                  <div className="mt-2 border rounded-lg bg-white max-h-48 overflow-y-auto">
+                    {searchResults.map((result, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => handleSelectBook(result)}
+                        className="w-full flex items-center gap-3 p-2 hover:bg-gray-50 border-b last:border-b-0 text-left transition-colors"
+                      >
+                        {result.image && (
+                          <img src={result.image} alt="" className="w-10 h-14 object-cover rounded flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{result.title}</p>
+                          <p className="text-xs text-gray-500 truncate">{result.author}</p>
+                          <p className="text-xs text-gray-400">{result.category}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {searched && !searching && searchResults.length === 0 && (
+                  <p className="mt-2 text-xs text-gray-500">검색 결과가 없습니다</p>
+                )}
+              </div>
+            )}
+
             {error && <p className="text-red-500 text-sm mb-3 bg-red-50 p-2 rounded">{error}</p>}
 
             <form onSubmit={handleSubmit} className="space-y-3">
@@ -1121,12 +1217,24 @@
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">판매가 *</label>
                   <input name="price" type="number" value={form.price} onChange={handleChange} required
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none" />
+                    placeholder="가격 입력"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none ${
+                      form.title && !form.price ? 'border-red-300 bg-red-50' : ''
+                    }`} />
+                  {form.title && !form.price && (
+                    <p className="text-xs text-red-400 mt-1">가격을 입력해주세요</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">정가 *</label>
                   <input name="original_price" type="number" value={form.original_price} onChange={handleChange} required
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none" />
+                    placeholder="정가 입력"
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none ${
+                      form.title && !form.original_price ? 'border-red-300 bg-red-50' : ''
+                    }`} />
+                  {form.title && !form.original_price && (
+                    <p className="text-xs text-red-400 mt-1">정가를 입력해주세요</p>
+                  )}
                 </div>
               </div>
               <div>
@@ -1136,8 +1244,14 @@
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">이미지 URL</label>
-                <input name="image" value={form.image} onChange={handleChange} placeholder="https://..."
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none" />
+                <div className="flex gap-2 items-start">
+                  <input name="image" value={form.image} onChange={handleChange} placeholder="https://..."
+                    className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none" />
+                  {/* 이미지 미리보기 */}
+                  {form.image && (
+                    <img src={form.image} alt="미리보기" className="w-10 h-14 object-cover rounded border" />
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -928,6 +928,56 @@ app.patch('/api/admin/orders/:id/status', authenticateToken, requireAdmin, async
 });
 
 // ============================================
+// 🔍 11-4단계: Google Books API 검색 (관리자 전용)
+// ============================================
+// GET /api/admin/books/search?q=검색어
+// 관리자가 상품을 등록할 때 Google Books에서 책 정보를 검색해서
+// 제목, 저자, 설명, 이미지 등을 자동으로 채울 수 있어요
+// API 키는 서버에서만 사용하여 클라이언트에 노출되지 않아요
+app.get('/api/admin/books/search', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const q = req.query.q;
+    if (!q) {
+      return res.status(400).json({ error: '검색어를 입력해주세요' });
+    }
+
+    // Google Books API 키가 없으면 에러
+    if (!process.env.GOOGLE_BOOKS_API_KEY) {
+      return res.status(500).json({ error: 'Google Books API 키가 설정되지 않았습니다' });
+    }
+
+    // Google Books API 호출 (서버에서 프록시)
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=5&langRestrict=ko&key=${process.env.GOOGLE_BOOKS_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Google Books API 오류:', data);
+      return res.status(502).json({ error: 'Google Books API 요청에 실패했습니다' });
+    }
+
+    // 필요한 필드만 추출하여 반환 (프론트엔드 폼에 맞게)
+    const books = (data.items || []).map(item => {
+      const info = item.volumeInfo;
+      return {
+        title: info.title || '',
+        author: (info.authors || []).join(', '),
+        description: (info.description || '').substring(0, 500),
+        image: (info.imageLinks?.thumbnail || '').replace('http://', 'https://'),
+        category: (info.categories || ['기타'])[0],
+        rating: info.averageRating || 0,
+        publishedDate: info.publishedDate || '',
+      };
+    });
+
+    res.json({ books });
+  } catch (error) {
+    console.error('Google Books 검색 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// ============================================
 // 🌐 12단계: index.html 서빙
 // ============================================
 // API가 아닌 모든 요청에 대해 index.html을 보내줘요
