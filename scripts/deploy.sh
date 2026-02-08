@@ -36,6 +36,13 @@ pm2 restart ecosystem.config.js --env production 2>/dev/null || pm2 start ecosys
 # 5단계: PM2 프로세스 목록 저장 (서버 재부팅 시 자동 시작을 위해)
 pm2 save
 
+# 6단계: Nginx 설정 리로드 (HTTPS 리버스 프록시)
+# Nginx가 설치되어 있을 때만 실행
+if command -v nginx &> /dev/null; then
+  echo "🔄 Nginx 설정을 리로드하는 중..."
+  sudo nginx -s reload
+fi
+
 echo "✅ book-shop 배포가 완료되었습니다!"
 echo "📊 현재 PM2 상태:"
 pm2 list

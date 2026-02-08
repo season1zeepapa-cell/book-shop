@@ -89,6 +89,11 @@ const helmet = require('helmet');          // 보안 HTTP 헤더 설정
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Nginx 리버스 프록시 뒤에서 실행되므로 원본 클라이언트 IP를 올바르게 인식하도록 설정
+// 이 설정이 없으면 Rate Limiter가 모든 요청을 127.0.0.1(Nginx IP)로 인식해서
+// 한 명이 요청하면 다른 모든 사용자도 차단되는 문제가 생겨요
+app.set('trust proxy', 1);
+
 // ============================================
 // 📚 1-2단계: 상품 마스터 데이터
 // ============================================
@@ -152,7 +157,6 @@ app.use(helmet({
       connectSrc: ["'self'", "https://api.tosspayments.com"],
       frameSrc: ["'self'", "https://*.tosspayments.com"],  // 토스 결제 위젯 iframe
       fontSrc: ["'self'", "https:"],
-      upgradeInsecureRequests: null,  // HTTP 서버이므로 HTTPS 강제 업그레이드 비활성화
     },
   },
 }));
