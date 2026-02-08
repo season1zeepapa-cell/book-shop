@@ -95,29 +95,22 @@ const PORT = process.env.PORT || 3000;
 app.set('trust proxy', 1);
 
 // ============================================
-// 📚 1-2단계: 상품 마스터 데이터
+// 📚 1-2단계: 상품 데이터 캐시
 // ============================================
-// 결제 금액 검증을 위해 서버에서도 책 정보를 가지고 있어야 해요
-// 현재는 하드코딩이지만, 향후 데이터베이스 테이블로 이관 권장
-// ⚠️ 주의: 가격 변경 시 index.html과 여기 두 곳 모두 수정해야 합니다
-const BOOKS = [
-  { id: 1, title: "모던 자바스크립트 Deep Dive", author: "이웅모", price: 45000, category: "프로그래밍" },
-  { id: 2, title: "클린 코드", author: "로버트 C. 마틴", price: 29700, category: "프로그래밍" },
-  { id: 3, title: "데미안", author: "헤르만 헤세", price: 8100, category: "소설" },
-  { id: 4, title: "사피엔스", author: "유발 하라리", price: 19800, category: "교양" },
-  { id: 5, title: "리액트를 다루는 기술", author: "김민준", price: 39600, category: "프로그래밍" },
-  { id: 6, title: "아몬드", author: "손원평", price: 10800, category: "소설" },
-  { id: 7, title: "트렌드 코리아 2026", author: "김난도", price: 17100, category: "경제/경영" },
-  { id: 8, title: "역행자", author: "자청", price: 15750, category: "자기계발" },
-  { id: 9, title: "파이썬 알고리즘 인터뷰", author: "박상길", price: 34200, category: "프로그래밍" },
-  { id: 10, title: "돈의 심리학", author: "모건 하우절", price: 16200, category: "경제/경영" },
-  { id: 11, title: "미움받을 용기", author: "기시미 이치로", price: 14400, category: "자기계발" },
-  { id: 12, title: "작별인사", author: "김영하", price: 13500, category: "소설" },
-];
+// 상품 데이터는 DB(books 테이블)에 저장되어 있어요
+// 서버 시작 시 DB에서 읽어 메모리에 캐싱하고, 상품 변경 시 캐시를 갱신해요
+// 이렇게 하면 매번 DB를 조회하지 않아도 빠르게 가격 검증이 가능해요
+let BOOKS_CACHE = [];
+let BOOKS_MAP_CACHE = new Map();
 
-// 빠른 조회를 위한 Map 생성 (id → book 객체)
-// Map을 사용하면 O(1) 시간 복잡도로 상품을 찾을 수 있어요
-const BOOKS_MAP = new Map(BOOKS.map(book => [book.id, book]));
+// DB에서 활성 상품을 읽어 캐시를 갱신하는 함수
+// 상품 등록/수정/삭제 시 반드시 호출해야 해요
+async function refreshBooksCache() {
+  const result = await pool.query('SELECT * FROM books WHERE is_active = true ORDER BY id');
+  BOOKS_CACHE = result.rows;
+  BOOKS_MAP_CACHE = new Map(result.rows.map(b => [b.id, b]));
+  console.log(`📚 상품 캐시 갱신 완료 (${BOOKS_CACHE.length}개)`);
+}
 
 // ============================================
 // 💳 토스페이먼츠 결제 설정
@@ -234,6 +227,7 @@ async function initDB() {
     fs.mkdirSync('./logs', { recursive: true });
     console.log('📁 logs 폴더가 생성되었습니다');
   }
+  // --- 1) 기존 테이블 생성 ---
   const createTableQuery = `
     CREATE TABLE IF NOT EXISTS app_users (
       id SERIAL PRIMARY KEY,               -- 자동 증가하는 고유 번호
@@ -244,6 +238,10 @@ async function initDB() {
     -- 기존 테이블에 name 컬럼이 있으면 제거
     ALTER TABLE app_users DROP COLUMN IF EXISTS name;
 
+    -- app_users에 role 컬럼 추가 (관리자 권한 시스템)
+    -- 'user' = 일반 사용자, 'admin' = 관리자
+    ALTER TABLE app_users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';
+
     -- 주문(orders) 테이블
     -- 결제가 완료된 주문 정보를 저장하는 테이블이에요
     CREATE TABLE IF NOT EXISTS orders (
@@ -253,16 +251,77 @@ async function initDB() {
       payment_key VARCHAR(255) UNIQUE,                     -- 토스페이먼츠 결제 키 (토스가 발급)
       order_name VARCHAR(500) NOT NULL,                    -- 주문명 (예: "모던 자바스크립트 외 2건")
       total_amount INTEGER NOT NULL,                       -- 총 결제 금액 (원)
-      status VARCHAR(50) DEFAULT 'READY',                  -- 주문 상태 (READY, DONE, CANCELED)
+      status VARCHAR(50) DEFAULT 'READY',                  -- 주문 상태 (READY, DONE, SHIPPING, DELIVERED, CANCELED)
       method VARCHAR(100),                                 -- 결제 수단 (카드, 계좌이체 등)
       items JSONB NOT NULL DEFAULT '[]',                   -- 주문 상품 목록 (JSON 배열)
       payment_response JSONB,                              -- 토스 API 응답 원본 (환불 등에 활용)
       created_at TIMESTAMP DEFAULT NOW(),                  -- 주문 생성 시각
       approved_at TIMESTAMP                                -- 결제 승인 시각
     );
+
+    -- 상품(books) 테이블
+    -- 관리자가 등록/수정/삭제할 수 있는 상품 정보를 저장하는 테이블이에요
+    CREATE TABLE IF NOT EXISTS books (
+      id SERIAL PRIMARY KEY,                    -- 상품 고유 번호
+      title VARCHAR(500) NOT NULL,              -- 책 제목
+      author VARCHAR(255) NOT NULL,             -- 저자
+      price INTEGER NOT NULL,                   -- 판매 가격 (원)
+      original_price INTEGER NOT NULL,          -- 정가 (원)
+      image VARCHAR(1000) DEFAULT '',           -- 표지 이미지 URL
+      category VARCHAR(100) NOT NULL,           -- 카테고리 (프로그래밍, 소설 등)
+      rating DECIMAL(2,1) DEFAULT 0.0,          -- 평점 (0.0 ~ 5.0)
+      description TEXT DEFAULT '',              -- 책 소개
+      badge VARCHAR(100) DEFAULT '',            -- 배지 텍스트 (베스트셀러, 10% 할인 등)
+      is_active BOOLEAN DEFAULT true,           -- 활성 상태 (false면 비활성 = 소프트 삭제)
+      created_at TIMESTAMP DEFAULT NOW(),       -- 등록 시각
+      updated_at TIMESTAMP DEFAULT NOW()        -- 수정 시각
+    );
   `;
   await pool.query(createTableQuery);
   console.log('✅ 데이터베이스 테이블 준비 완료');
+
+  // --- 2) 시드 데이터: books 테이블이 비어있을 때만 기본 12권 삽입 ---
+  const bookCount = await pool.query('SELECT COUNT(*) FROM books');
+  if (parseInt(bookCount.rows[0].count) === 0) {
+    console.log('📚 books 테이블이 비어있어 기본 상품 데이터를 삽입합니다...');
+    const seedBooks = [
+      [1, '모던 자바스크립트 Deep Dive', '이웅모', 45000, 45000, 'https://picsum.photos/seed/js-deep/300/400', '프로그래밍', 4.8, '자바스크립트의 기본 개념과 동작 원리를 깊이 있게 설명하는 책입니다.', '베스트셀러'],
+      [2, '클린 코드', '로버트 C. 마틴', 29700, 33000, 'https://picsum.photos/seed/clean-code/300/400', '프로그래밍', 4.6, '깨끗한 코드를 작성하는 방법을 배울 수 있는 명저입니다.', '10% 할인'],
+      [3, '데미안', '헤르만 헤세', 8100, 9000, 'https://picsum.photos/seed/demian/300/400', '소설', 4.5, '자아를 찾아가는 청춘의 이야기를 담은 고전 소설입니다.', '10% 할인'],
+      [4, '사피엔스', '유발 하라리', 19800, 22000, 'https://picsum.photos/seed/sapiens/300/400', '교양', 4.7, '인류의 역사를 거시적 관점에서 바라보는 교양 필독서입니다.', '10% 할인'],
+      [5, '리액트를 다루는 기술', '김민준', 39600, 44000, 'https://picsum.photos/seed/react-book/300/400', '프로그래밍', 4.4, 'React의 기초부터 실전 프로젝트까지 다루는 입문서입니다.', '10% 할인'],
+      [6, '아몬드', '손원평', 10800, 12000, 'https://picsum.photos/seed/almond/300/400', '소설', 4.3, '감정을 느끼지 못하는 소년의 성장 이야기입니다.', '10% 할인'],
+      [7, '트렌드 코리아 2026', '김난도', 17100, 19000, 'https://picsum.photos/seed/trend2026/300/400', '경제/경영', 4.2, '2026년 대한민국 소비 트렌드를 예측하는 책입니다.', '10% 할인'],
+      [8, '역행자', '자청', 15750, 17500, 'https://picsum.photos/seed/reverse/300/400', '자기계발', 4.1, '운명을 거스르는 사람들의 비밀을 담은 자기계발서입니다.', '10% 할인'],
+      [9, '파이썬 알고리즘 인터뷰', '박상길', 34200, 38000, 'https://picsum.photos/seed/python-algo/300/400', '프로그래밍', 4.5, '코딩 테스트와 알고리즘 인터뷰를 준비하는 실전 가이드입니다.', '10% 할인'],
+      [10, '돈의 심리학', '모건 하우절', 16200, 18000, 'https://picsum.photos/seed/money-psy/300/400', '경제/경영', 4.6, '돈에 대한 심리와 현명한 투자 마인드를 알려주는 책입니다.', '10% 할인'],
+      [11, '미움받을 용기', '기시미 이치로', 14400, 16000, 'https://picsum.photos/seed/courage/300/400', '자기계발', 4.7, '아들러 심리학을 쉽게 풀어낸 대화형 자기계발서입니다.', '10% 할인'],
+      [12, '작별인사', '김영하', 13500, 15000, 'https://picsum.photos/seed/goodbye/300/400', '소설', 4.4, '가까운 미래를 배경으로 한 김영하 작가의 장편소설입니다.', '10% 할인'],
+    ];
+
+    for (const book of seedBooks) {
+      await pool.query(
+        `INSERT INTO books (id, title, author, price, original_price, image, category, rating, description, badge)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        book
+      );
+    }
+    // 시퀀스를 현재 최대 id 이후로 맞춰줌 (다음 INSERT 시 id 충돌 방지)
+    await pool.query("SELECT setval('books_id_seq', (SELECT MAX(id) FROM books))");
+    console.log('✅ 기본 상품 12권이 등록되었습니다');
+  }
+
+  // --- 3) ADMIN_EMAIL 환경변수가 있으면 해당 계정을 관리자로 승격 ---
+  if (process.env.ADMIN_EMAIL) {
+    await pool.query(
+      "UPDATE app_users SET role = 'admin' WHERE email = $1 AND role != 'admin'",
+      [process.env.ADMIN_EMAIL]
+    );
+    console.log(`👑 관리자 이메일 설정: ${process.env.ADMIN_EMAIL}`);
+  }
+
+  // --- 4) 상품 캐시 초기화 ---
+  await refreshBooksCache();
 }
 
 // ============================================
@@ -288,10 +347,23 @@ function authenticateToken(req, res, next) {
       return res.status(401).json({ error: '유효하지 않은 토큰입니다' });
     }
     // 토큰 안에 들어있던 사용자 정보를 req.user에 저장
-    // 이후 API에서 req.user.id, req.user.email로 접근 가능
+    // 이후 API에서 req.user.id, req.user.email, req.user.role로 접근 가능
     req.user = decoded;
     next(); // 다음 단계(실제 API)로 넘어가기
   });
+}
+
+// ============================================
+// 🛡️ 5-0.5단계: 관리자 권한 미들웨어
+// ============================================
+// authenticateToken 뒤에 붙여서 사용해요
+// 로그인한 사용자의 role이 'admin'인지 확인하는 미들웨어
+// 사용 예: app.get('/api/admin/books', authenticateToken, requireAdmin, handler)
+function requireAdmin(req, res, next) {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: '관리자 권한이 필요합니다' });
+  }
+  next();
 }
 
 // ============================================
@@ -324,8 +396,8 @@ function validatePaymentAmount(items, expectedTotal) {
       return { valid: false, error: '잘못된 주문 상품 정보입니다' };
     }
 
-    // 서버의 마스터 데이터에서 실제 가격 조회
-    const masterBook = BOOKS_MAP.get(bookId);
+    // 서버의 마스터 데이터(캐시)에서 실제 가격 조회
+    const masterBook = BOOKS_MAP_CACHE.get(bookId);
     if (!masterBook) {
       return {
         valid: false,
@@ -465,8 +537,9 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     // --- JWT 토큰 생성 ---
     // jwt.sign(토큰에 담을 데이터, 비밀키, 옵션)
     // expiresIn: '7d' = 7일 후 만료 (만료되면 다시 로그인해야 해요)
+    // role도 토큰에 포함시켜서 관리자 여부를 확인할 수 있어요
     const token = jwt.sign(
-      { id: user.id, email: user.email },
+      { id: user.id, email: user.email, role: user.role || 'user' },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -474,7 +547,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     res.json({
       message: '로그인 성공',
       token,  // 클라이언트가 이 토큰을 저장해두고, 이후 요청마다 보내줘야 해요
-      user: { id: user.id, email: user.email }
+      user: { id: user.id, email: user.email, role: user.role || 'user' }
     });
 
   } catch (error) {
@@ -492,7 +565,7 @@ app.get('/api/me', authenticateToken, async (req, res) => {
   try {
     // req.user는 authenticateToken에서 토큰을 디코딩해서 넣어준 데이터
     const result = await pool.query(
-      'SELECT id, email, created_at FROM app_users WHERE id = $1',
+      'SELECT id, email, role, created_at FROM app_users WHERE id = $1',
       [req.user.id]
     );
 
@@ -653,7 +726,209 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
 });
 
 // ============================================
-// 🌐 11단계: index.html 서빙
+// 📚 11-1단계: 공개 상품 목록 API
+// ============================================
+// GET /api/books — 누구나 접근 가능 (인증 불필요)
+// 활성(is_active=true) 상품만 반환해요 (캐시 데이터 사용)
+app.get('/api/books', (req, res) => {
+  res.json({ books: BOOKS_CACHE });
+});
+
+// ============================================
+// 🔧 11-2단계: 관리자 API — 상품 관리
+// ============================================
+// 모든 관리자 API는 authenticateToken + requireAdmin 미들웨어를 거쳐요
+// 즉, 로그인한 관리자만 접근할 수 있어요
+
+// GET /api/admin/books — 전체 상품 목록 (비활성 포함)
+app.get('/api/admin/books', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM books ORDER BY id');
+    res.json({ books: result.rows });
+  } catch (error) {
+    console.error('관리자 상품 목록 조회 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// POST /api/admin/books — 새 상품 등록
+app.post('/api/admin/books', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { title, author, price, original_price, image, category, rating, description, badge } = req.body;
+
+    // 필수 필드 검증
+    if (!title || !author || !price || !original_price || !category) {
+      return res.status(400).json({ error: '제목, 저자, 가격, 정가, 카테고리는 필수입니다' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO books (title, author, price, original_price, image, category, rating, description, badge)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [title, author, price, original_price, image || '', category, rating || 0, description || '', badge || '']
+    );
+
+    // 상품이 변경되었으니 캐시 갱신!
+    await refreshBooksCache();
+
+    res.status(201).json({ message: '상품이 등록되었습니다', book: result.rows[0] });
+  } catch (error) {
+    console.error('상품 등록 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// PUT /api/admin/books/:id — 상품 수정
+app.put('/api/admin/books/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const bookId = parseInt(req.params.id);
+    const { title, author, price, original_price, image, category, rating, description, badge, is_active } = req.body;
+
+    // 상품 존재 여부 확인
+    const existing = await pool.query('SELECT id FROM books WHERE id = $1', [bookId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: '상품을 찾을 수 없습니다' });
+    }
+
+    const result = await pool.query(
+      `UPDATE books SET
+        title = COALESCE($1, title),
+        author = COALESCE($2, author),
+        price = COALESCE($3, price),
+        original_price = COALESCE($4, original_price),
+        image = COALESCE($5, image),
+        category = COALESCE($6, category),
+        rating = COALESCE($7, rating),
+        description = COALESCE($8, description),
+        badge = COALESCE($9, badge),
+        is_active = COALESCE($10, is_active),
+        updated_at = NOW()
+       WHERE id = $11
+       RETURNING *`,
+      [title, author, price, original_price, image, category, rating, description, badge, is_active, bookId]
+    );
+
+    await refreshBooksCache();
+
+    res.json({ message: '상품이 수정되었습니다', book: result.rows[0] });
+  } catch (error) {
+    console.error('상품 수정 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// DELETE /api/admin/books/:id — 상품 비활성화 (소프트 삭제)
+// 실제로 DB에서 지우지 않고 is_active를 false로 변경해요
+// 이렇게 하면 기존 주문의 상품 정보가 보존돼요
+app.delete('/api/admin/books/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const bookId = parseInt(req.params.id);
+
+    const result = await pool.query(
+      'UPDATE books SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id, title',
+      [bookId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: '상품을 찾을 수 없습니다' });
+    }
+
+    await refreshBooksCache();
+
+    res.json({ message: `"${result.rows[0].title}" 상품이 비활성화되었습니다` });
+  } catch (error) {
+    console.error('상품 삭제 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// ============================================
+// 🔧 11-3단계: 관리자 API — 주문 관리
+// ============================================
+
+// GET /api/admin/orders — 전체 주문 목록 (페이지네이션 + 상태 필터)
+app.get('/api/admin/orders', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;        // 페이지 번호 (기본 1)
+    const limit = parseInt(req.query.limit) || 20;     // 한 페이지 당 개수 (기본 20)
+    const status = req.query.status;                    // 상태 필터 (선택)
+    const offset = (page - 1) * limit;
+
+    // 동적 WHERE절 구성
+    let whereClause = '';
+    const params = [];
+
+    if (status) {
+      whereClause = 'WHERE o.status = $1';
+      params.push(status);
+    }
+
+    // 총 개수 조회 (페이지네이션 정보용)
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM orders o ${whereClause}`,
+      params
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
+
+    // 주문 목록 조회 (사용자 이메일도 함께 가져옴)
+    const ordersResult = await pool.query(
+      `SELECT o.*, u.email as user_email
+       FROM orders o
+       JOIN app_users u ON o.user_id = u.id
+       ${whereClause}
+       ORDER BY o.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      orders: ordersResult.rows,
+      pagination: {
+        page,
+        limit,
+        totalCount,
+        totalPages: Math.ceil(totalCount / limit),
+      },
+    });
+  } catch (error) {
+    console.error('관리자 주문 목록 조회 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// PATCH /api/admin/orders/:id/status — 주문 상태 변경
+// 가능한 상태: READY, DONE, SHIPPING, DELIVERED, CANCELED
+app.patch('/api/admin/orders/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id);
+    const { status } = req.body;
+
+    // 허용된 상태 값 확인
+    const allowedStatuses = ['READY', 'DONE', 'SHIPPING', 'DELIVERED', 'CANCELED'];
+    if (!status || !allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        error: `유효하지 않은 상태입니다. 허용: ${allowedStatuses.join(', ')}`,
+      });
+    }
+
+    const result = await pool.query(
+      'UPDATE orders SET status = $1 WHERE id = $2 RETURNING id, order_id, status',
+      [status, orderId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: '주문을 찾을 수 없습니다' });
+    }
+
+    res.json({ message: '주문 상태가 변경되었습니다', order: result.rows[0] });
+  } catch (error) {
+    console.error('주문 상태 변경 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// ============================================
+// 🌐 12단계: index.html 서빙
 // ============================================
 // API가 아닌 모든 요청에 대해 index.html을 보내줘요
 // (React가 클라이언트에서 화면을 그리는 SPA 방식)
