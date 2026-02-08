@@ -51,6 +51,33 @@
     .book-card:hover {
       transform: translateY(-4px);
     }
+
+    /* 모바일 바텀시트: 아래에서 위로 슬라이드 */
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+    .bottom-sheet-up {
+      animation: slideUp 0.3s ease-out;
+    }
+
+    /* PC 모달: 서서히 나타나며 살짝 위로 */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .modal-fade-in {
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    /* 오버레이: 서서히 어두워지는 배경 */
+    @keyframes overlayFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .overlay-fade-in {
+      animation: overlayFadeIn 0.2s ease-out;
+    }
   </style>
 </head>
 
@@ -120,14 +147,14 @@
             책 표지 이미지 영역
             relative: 배지를 이미지 위에 겹쳐놓기 위해 사용
           */}
-          <div className="relative">
+          <div className="relative bg-gray-100">
             <img
               src={book.image}
               alt={book.title}
-              className="w-full h-64 object-cover"
+              className="w-full h-48 sm:h-64 object-contain"
               /* w-full: 너비를 부모만큼 꽉 채움 */
-              /* h-64: 높이 256px 고정 */
-              /* object-cover: 비율 유지하면서 영역을 꽉 채움 (잘릴 수 있음) */
+              /* h-48: 모바일 192px / sm:h-64: PC 256px */
+              /* object-contain: 원본 비율 유지, 잘림 없이 전체 표시 */
             />
             {/* 배지 (베스트셀러, 할인 등) - badge가 있을 때만 표시 */}
             {book.badge && (
@@ -140,8 +167,8 @@
           </div>
 
           {/* 책 정보 영역 */}
-          <div className="p-4 flex flex-col flex-grow">
-            {/* p-4: 안쪽 여백 16px (상자 안의 내용물과 테두리 사이 간격) */}
+          <div className="p-3 sm:p-4 flex flex-col flex-grow">
+            {/* p-3: 모바일 12px / sm:p-4: PC 16px */}
             {/* flex-grow: 남는 공간을 이 영역이 차지하게 함 */}
 
             {/* 카테고리 라벨 */}
@@ -150,8 +177,8 @@
             </span>
 
             {/* 책 제목 */}
-            <h3 className="mt-1 text-lg font-bold text-gray-900 line-clamp-2">
-              {/* line-clamp-2: 2줄까지만 보여주고 나머지는 ... 처리 */}
+            <h3 className="mt-1 text-sm sm:text-lg font-bold text-gray-900 line-clamp-2">
+              {/* text-sm: 모바일 14px / sm:text-lg: PC 18px */}
               {book.title}
             </h3>
 
@@ -174,7 +201,7 @@
                       {formatPrice(book.original_price)}
                     </p>
                   )}
-                  <p className="text-xl font-bold text-gray-900">
+                  <p className="text-base sm:text-xl font-bold text-gray-900">
                     {/* 할인율 표시 */}
                     {discount > 0 && (
                       <span className="text-red-500 mr-1">{discount}%</span>
@@ -186,8 +213,8 @@
                 {/* 장바구니 담기 버튼 */}
                 <button
                   onClick={() => onAddToCart(book)}
-                  className="bg-primary hover:bg-blue-700 text-white p-2 rounded-lg transition-colors duration-200"
-                  /* hover:bg-blue-700: 마우스를 올리면 더 진한 파란색으로 변경 */
+                  className="bg-primary hover:bg-blue-700 text-white p-2 rounded-lg transition-colors duration-200 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                  /* min-w-[44px] min-h-[44px]: 터치 타겟 최소 44px (Apple HIG 기준) */
                   /* transition-colors: 색상이 부드럽게 변하는 효과 */
                 >
                   {/* 장바구니 아이콘 (SVG) */}
@@ -236,7 +263,7 @@
             {/* max-w-md: 최대 너비 448px (너무 넓어지지 않게) */}
 
             {/* 장바구니 헤더 */}
-            <div className="flex items-center justify-between p-6 border-b">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b">
               <h2 className="text-xl font-bold text-gray-900">
                 장바구니 ({totalItems})
               </h2>
@@ -252,7 +279,7 @@
             </div>
 
             {/* 장바구니 상품 목록 (스크롤 가능) */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               {/* flex-1: 남는 공간을 모두 차지 */}
               {/* overflow-y-auto: 내용이 넘치면 세로 스크롤 생성 */}
 
@@ -291,7 +318,7 @@
                           {/* 수량 감소 버튼 */}
                           <button
                             onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
-                            className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-sm font-bold transition-colors"
+                            className="w-8 h-8 sm:w-6 sm:h-6 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-sm font-bold transition-colors"
                           >
                             −
                           </button>
@@ -302,7 +329,7 @@
                           {/* 수량 증가 버튼 */}
                           <button
                             onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-                            className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-sm font-bold transition-colors"
+                            className="w-8 h-8 sm:w-6 sm:h-6 rounded bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-sm font-bold transition-colors"
                           >
                             +
                           </button>
@@ -325,7 +352,7 @@
 
             {/* 장바구니 하단: 총 금액 + 주문 버튼 */}
             {cart.length > 0 && (
-              <div className="border-t p-6 space-y-4">
+              <div className="border-t p-4 sm:p-6 space-y-3 sm:space-y-4">
                 {/* 배송비 안내 */}
                 <div className="flex justify-between text-sm text-gray-500">
                   <span>배송비</span>
@@ -481,9 +508,9 @@
             </div>
           </header>
 
-          <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+          <main className="max-w-3xl mx-auto px-4 py-4 sm:py-8 space-y-6">
             {/* === 주문 상품 요약 카드 === */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
               <h2 className="text-lg font-bold text-gray-900 mb-4">주문 상품</h2>
               <div className="space-y-3">
                 {cart.map((item) => (
@@ -515,7 +542,7 @@
             </div>
 
             {/* === 결제 수단 위젯 (토스페이먼츠 SDK가 이 안에 UI를 그려줘요) === */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
               {loading && (
                 <div className="text-center py-8">
                   <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -531,18 +558,20 @@
             </div>
 
             {/* === 약관 동의 위젯 === */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6">
               <div id="agreement"></div>
             </div>
 
-            {/* === 결제하기 버튼 === */}
-            <button
-              onClick={handlePayment}
-              disabled={loading || !!error}
-              className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors duration-200 disabled:opacity-50 text-lg"
-            >
-              {formatPrice(finalAmount)} 결제하기
-            </button>
+            {/* === 결제하기 버튼 (모바일: 하단 고정) === */}
+            <div className="sticky bottom-0 bg-gray-50 pt-2 pb-4 sm:static sm:bg-transparent sm:pt-0 sm:pb-0">
+              <button
+                onClick={handlePayment}
+                disabled={loading || !!error}
+                className="w-full bg-primary hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-colors duration-200 disabled:opacity-50 text-lg"
+              >
+                {formatPrice(finalAmount)} 결제하기
+              </button>
+            </div>
           </main>
         </div>
       );
@@ -568,7 +597,7 @@
 
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-lg max-w-md w-full p-8 text-center">
+          <div className="bg-white rounded-2xl shadow-lg max-w-md w-full p-6 sm:p-8 text-center">
             {/* 성공 체크 아이콘 (초록색 원 안에 체크) */}
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -621,7 +650,7 @@
     function FailPage({ result, onGoHome }) {
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-lg max-w-md w-full p-8 text-center">
+          <div className="bg-white rounded-2xl shadow-lg max-w-md w-full p-6 sm:p-8 text-center">
             {/* 실패 X 아이콘 (빨간색 원 안에 X) */}
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -663,16 +692,20 @@
         : 0;
 
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           {/* 배경 오버레이 */}
-          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+          <div className="overlay-fade-in absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
 
-          {/* 모달 본체 */}
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          {/* 모달 본체 — 모바일: 바텀시트 / PC: 센터 모달 */}
+          <div className="bottom-sheet-up sm:modal-fade-in relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* 바텀시트 드래그 핸들 (모바일에서만 표시) */}
+            <div className="sm:hidden flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
+            </div>
             {/* 닫기 버튼 */}
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 z-10 bg-white rounded-full p-1 shadow-md text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 z-10 bg-white rounded-full p-2 sm:p-1 shadow-md text-gray-400 hover:text-gray-600"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -681,17 +714,17 @@
 
             <div className="md:flex">
               {/* 책 표지 */}
-              <div className="md:w-1/2">
+              <div className="md:w-1/2 bg-gray-100">
                 <img
                   src={book.image}
                   alt={book.title}
-                  className="w-full h-72 md:h-full object-cover rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none"
+                  className="w-full h-48 sm:h-72 md:h-full object-contain p-4 sm:rounded-t-2xl md:rounded-l-2xl md:rounded-tr-none"
                 />
               </div>
               {/* 책 정보 */}
-              <div className="p-6 md:w-1/2 flex flex-col">
+              <div className="p-4 sm:p-6 md:w-1/2 flex flex-col">
                 <span className="text-sm text-primary font-semibold">{book.category}</span>
-                <h2 className="text-2xl font-bold text-gray-900 mt-1">{book.title}</h2>
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mt-1">{book.title}</h2>
                 <p className="text-gray-500 mt-1">{book.author}</p>
                 <div className="mt-3">
                   <StarRating rating={book.rating} />
@@ -705,7 +738,7 @@
                         {formatPrice(book.original_price)}
                       </p>
                     )}
-                    <p className="text-2xl font-bold">
+                    <p className="text-xl sm:text-2xl font-bold">
                       {discount > 0 && (
                         <span className="text-red-500 mr-1">{discount}%</span>
                       )}
@@ -772,21 +805,25 @@
       }
 
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           {/* 반투명 배경 오버레이 */}
-          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+          <div className="overlay-fade-in absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
 
-          {/* 모달 본체 */}
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
+          {/* 모달 본체 — 모바일: 바텀시트 / PC: 센터 모달 */}
+          <div className="bottom-sheet-up sm:modal-fade-in relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-8">
+            {/* 바텀시트 드래그 핸들 (모바일에서만 표시) */}
+            <div className="sm:hidden flex justify-center pb-2">
+              <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
+            </div>
             {/* 닫기 버튼 */}
-            <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+            <button onClick={onClose} className="absolute top-4 right-4 p-2 sm:p-0 text-gray-400 hover:text-gray-600">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
 
             {/* 제목 */}
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">로그인</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">로그인</h2>
 
             {/* 에러 메시지 (있을 때만 표시) */}
             {error && (
@@ -804,7 +841,7 @@
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   placeholder="example@email.com"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
+                  className="w-full px-4 py-3 sm:py-2 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
                 />
               </div>
               <div>
@@ -817,7 +854,7 @@
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     placeholder="비밀번호 입력"
-                    className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
+                    className="w-full px-4 py-3 sm:py-2 pr-10 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
                   />
                   {/* 눈 아이콘: 클릭하면 비밀번호 보기/숨기기 토글 */}
                   <button
@@ -917,17 +954,21 @@
       }
 
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="overlay-fade-in absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
 
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
-            <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+          <div className="bottom-sheet-up sm:modal-fade-in relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-8 max-h-[90vh] overflow-y-auto">
+            {/* 바텀시트 드래그 핸들 (모바일에서만 표시) */}
+            <div className="sm:hidden flex justify-center pb-2">
+              <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
+            </div>
+            <button onClick={onClose} className="absolute top-4 right-4 p-2 sm:p-0 text-gray-400 hover:text-gray-600">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
 
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">회원가입</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-6">회원가입</h2>
 
             {error && (
               <p className="text-red-500 text-sm mb-4 bg-red-50 p-3 rounded-lg">{error}</p>
@@ -943,7 +984,7 @@
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   placeholder="example@email.com"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
+                  className="w-full px-4 py-3 sm:py-2 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
                 />
               </div>
               {/* 비밀번호 입력 */}
@@ -957,7 +998,7 @@
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     placeholder="8자 이상, 대문자/숫자/특수문자 포함"
-                    className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
+                    className="w-full px-4 py-3 sm:py-2 pr-10 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:outline-none"
                   />
                   {/* 눈 아이콘: 클릭하면 비밀번호 보기/숨기기 토글 */}
                   <button
@@ -980,7 +1021,7 @@
 
                 {/* 비밀번호 규칙 안내 (실시간으로 충족 여부 표시) */}
                 {/* 비밀번호를 입력하기 시작하면 규칙 목록이 나타나요 */}
-                <ul className="mt-2 space-y-1">
+                <ul className="mt-2 space-y-0.5 sm:space-y-1">
                   {passwordRules.map((rule, i) => (
                     <li key={i} className={`text-xs flex items-center gap-1.5 ${
                       password.length === 0
@@ -1091,7 +1132,7 @@
                   <img
                     src={currentBook.image}
                     alt={currentBook.title}
-                    className="w-36 h-52 sm:w-44 sm:h-64 object-cover rounded-xl shadow-2xl transition-all duration-500"
+                    className="w-36 h-52 sm:w-44 sm:h-64 object-contain rounded-xl shadow-2xl transition-all duration-500 bg-white"
                     style={{ boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}
                   />
                 </div>
@@ -1223,10 +1264,14 @@
       }
 
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
-            <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="overlay-fade-in absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+          <div className="bottom-sheet-up sm:modal-fade-in relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-lg w-full p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
+            {/* 바텀시트 드래그 핸들 (모바일에서만 표시) */}
+            <div className="sm:hidden flex justify-center pb-2">
+              <div className="w-10 h-1 bg-gray-300 rounded-full"></div>
+            </div>
+            <button onClick={onClose} className="absolute top-4 right-4 p-2 sm:p-0 text-gray-400 hover:text-gray-600">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -1301,7 +1346,7 @@
                 <input name="author" value={form.author} onChange={handleChange} required
                   className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary focus:outline-none" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">판매가 *</label>
                   <input name="price" type="number" value={form.price} onChange={handleChange} required
@@ -2357,10 +2402,10 @@
                 </div>
 
                 {/* ===== 로그인/사용자 정보 + 장바구니 영역 ===== */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 sm:gap-3">
                   {user ? (
                     /* 로그인 되었을 때: 사용자 이름 + 로그아웃 버튼 */
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
                       {/* 사용자 아이콘 */}
                       <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -2371,7 +2416,7 @@
                       {/* 마이페이지 버튼: 로그인한 모든 사용자에게 표시 */}
                       <button
                         onClick={() => setCurrentPage('mypage')}
-                        className="text-sm text-gray-600 hover:text-primary font-medium transition-colors"
+                        className="text-xs sm:text-sm text-gray-600 hover:text-primary font-medium transition-colors"
                       >
                         마이페이지
                       </button>
@@ -2379,14 +2424,14 @@
                       {user.role === 'admin' && (
                         <button
                           onClick={() => setCurrentPage('admin')}
-                          className="text-sm bg-gray-800 text-white px-3 py-1.5 rounded-lg hover:bg-gray-900 transition-colors"
+                          className="text-xs sm:text-sm bg-gray-800 text-white px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg hover:bg-gray-900 transition-colors"
                         >
                           관리자
                         </button>
                       )}
                       <button
                         onClick={handleLogout}
-                        className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                        className="text-xs sm:text-sm text-gray-500 hover:text-gray-700 transition-colors"
                       >
                         로그아웃
                       </button>
@@ -2486,7 +2531,7 @@
               </div>
             ) : filteredBooks.length > 0 ? (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
                   {filteredBooks.slice(0, visibleCount).map((book) => (
                     <div key={book.id} onClick={() => setSelectedBook(book)} className="cursor-pointer">
                       <BookCard book={book} onAddToCart={addToCart} />
