@@ -149,8 +149,7 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: [
         "'self'",
-        "https://api.tosspayments.com",   // 토스 결제 승인 API
-        "https://log.tosspayments.com",    // 토스 SDK 로그 수집 (결제 위젯 정상 동작에 필요)
+        "https://*.tosspayments.com",      // 토스 SDK 전체 (api, log, event 등 모든 서브도메인)
         "https://unpkg.com",               // Babel 소스맵 로딩
       ],
       frameSrc: ["'self'", "https://*.tosspayments.com"],  // 토스 결제 위젯 iframe
