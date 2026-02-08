@@ -2565,8 +2565,10 @@
             </div>
           </header>
 
-          {/* ========== 히어로 배너 (최근 등록 책 롤링) ========== */}
-          <HeroSection books={books} onSelectBook={setSelectedBook} />
+          {/* ========== 히어로 배너 (검색 중이 아닐 때만 표시) ========== */}
+          {!searchQuery.trim() && (
+            <HeroSection books={books} onSelectBook={setSelectedBook} />
+          )}
 
           {/* ========== 메인 콘텐츠 영역 ========== */}
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
