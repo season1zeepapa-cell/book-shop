@@ -280,36 +280,9 @@ async function initDB() {
   await pool.query(createTableQuery);
   console.log('✅ 데이터베이스 테이블 준비 완료');
 
-  // --- 2) 시드 데이터: books 테이블이 비어있을 때만 기본 12권 삽입 ---
-  const bookCount = await pool.query('SELECT COUNT(*) FROM books');
-  if (parseInt(bookCount.rows[0].count) === 0) {
-    console.log('📚 books 테이블이 비어있어 기본 상품 데이터를 삽입합니다...');
-    const seedBooks = [
-      [1, '모던 자바스크립트 Deep Dive', '이웅모', 45000, 45000, 'https://picsum.photos/seed/js-deep/300/400', '프로그래밍', 4.8, '자바스크립트의 기본 개념과 동작 원리를 깊이 있게 설명하는 책입니다.', '베스트셀러'],
-      [2, '클린 코드', '로버트 C. 마틴', 29700, 33000, 'https://picsum.photos/seed/clean-code/300/400', '프로그래밍', 4.6, '깨끗한 코드를 작성하는 방법을 배울 수 있는 명저입니다.', '10% 할인'],
-      [3, '데미안', '헤르만 헤세', 8100, 9000, 'https://picsum.photos/seed/demian/300/400', '소설', 4.5, '자아를 찾아가는 청춘의 이야기를 담은 고전 소설입니다.', '10% 할인'],
-      [4, '사피엔스', '유발 하라리', 19800, 22000, 'https://picsum.photos/seed/sapiens/300/400', '교양', 4.7, '인류의 역사를 거시적 관점에서 바라보는 교양 필독서입니다.', '10% 할인'],
-      [5, '리액트를 다루는 기술', '김민준', 39600, 44000, 'https://picsum.photos/seed/react-book/300/400', '프로그래밍', 4.4, 'React의 기초부터 실전 프로젝트까지 다루는 입문서입니다.', '10% 할인'],
-      [6, '아몬드', '손원평', 10800, 12000, 'https://picsum.photos/seed/almond/300/400', '소설', 4.3, '감정을 느끼지 못하는 소년의 성장 이야기입니다.', '10% 할인'],
-      [7, '트렌드 코리아 2026', '김난도', 17100, 19000, 'https://picsum.photos/seed/trend2026/300/400', '경제/경영', 4.2, '2026년 대한민국 소비 트렌드를 예측하는 책입니다.', '10% 할인'],
-      [8, '역행자', '자청', 15750, 17500, 'https://picsum.photos/seed/reverse/300/400', '자기계발', 4.1, '운명을 거스르는 사람들의 비밀을 담은 자기계발서입니다.', '10% 할인'],
-      [9, '파이썬 알고리즘 인터뷰', '박상길', 34200, 38000, 'https://picsum.photos/seed/python-algo/300/400', '프로그래밍', 4.5, '코딩 테스트와 알고리즘 인터뷰를 준비하는 실전 가이드입니다.', '10% 할인'],
-      [10, '돈의 심리학', '모건 하우절', 16200, 18000, 'https://picsum.photos/seed/money-psy/300/400', '경제/경영', 4.6, '돈에 대한 심리와 현명한 투자 마인드를 알려주는 책입니다.', '10% 할인'],
-      [11, '미움받을 용기', '기시미 이치로', 14400, 16000, 'https://picsum.photos/seed/courage/300/400', '자기계발', 4.7, '아들러 심리학을 쉽게 풀어낸 대화형 자기계발서입니다.', '10% 할인'],
-      [12, '작별인사', '김영하', 13500, 15000, 'https://picsum.photos/seed/goodbye/300/400', '소설', 4.4, '가까운 미래를 배경으로 한 김영하 작가의 장편소설입니다.', '10% 할인'],
-    ];
-
-    for (const book of seedBooks) {
-      await pool.query(
-        `INSERT INTO books (id, title, author, price, original_price, image, category, rating, description, badge)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        book
-      );
-    }
-    // 시퀀스를 현재 최대 id 이후로 맞춰줌 (다음 INSERT 시 id 충돌 방지)
-    await pool.query("SELECT setval('books_id_seq', (SELECT MAX(id) FROM books))");
-    console.log('✅ 기본 상품 12권이 등록되었습니다');
-  }
+  // --- 2) 시드 데이터: 제거됨 (Google Books 시딩 API로 대체) ---
+  // 기본 시드 데이터는 더 이상 자동 삽입하지 않아요
+  // 관리자 페이지에서 "Google Books 시딩" 버튼으로 상품을 등록하세요
 
   // --- 3) ADMIN_EMAIL 환경변수가 있으면 해당 계정을 관리자로 승격 ---
   if (process.env.ADMIN_EMAIL) {
