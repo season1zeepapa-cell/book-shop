@@ -152,6 +152,7 @@ app.use(helmet({
       connectSrc: ["'self'", "https://api.tosspayments.com"],
       frameSrc: ["'self'", "https://*.tosspayments.com"],  // 토스 결제 위젯 iframe
       fontSrc: ["'self'", "https:"],
+      upgradeInsecureRequests: [],  // HTTP 서버이므로 HTTPS 강제 업그레이드 비활성화
     },
   },
 }));
