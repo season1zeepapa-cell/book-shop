@@ -1286,6 +1286,7 @@
       const [loading, setLoading] = React.useState(true);
       const [showForm, setShowForm] = React.useState(false); // 등록/수정 폼 표시 여부
       const [editBook, setEditBook] = React.useState(null);  // 수정할 상품 (null이면 등록)
+      const [seeding, setSeeding] = React.useState(false);   // Google Books 시딩 진행 중
 
       // 상품 목록 불러오기 (비활성 포함)
       async function loadBooks() {
@@ -1303,6 +1304,32 @@
       }
 
       React.useEffect(() => { loadBooks(); }, []);
+
+      // Google Books에서 약 50권 자동 시딩
+      async function handleSeedGoogleBooks() {
+        if (!confirm(
+          '⚠️ 기존 모든 상품이 삭제되고 Google Books에서 약 50권이 새로 등록됩니다.\n\n계속하시겠습니까?'
+        )) return;
+
+        setSeeding(true);
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch('/api/admin/books/seed-google', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showToast(data.message);
+            loadBooks();
+          } else {
+            showToast('시딩 실패: ' + data.error);
+          }
+        } catch (err) {
+          showToast('서버 연결에 실패했습니다');
+        }
+        setSeeding(false);
+      }
 
       // 상품 비활성화 (삭제)
       async function handleDelete(book) {
@@ -1353,17 +1380,30 @@
 
       return (
         <div>
-          {/* 상단: 제목 + 새 상품 버튼 */}
+          {/* 상단: 제목 + 시딩/등록 버튼 */}
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-gray-900">
               전체 상품 ({books.length}개)
             </h3>
-            <button
-              onClick={() => { setEditBook(null); setShowForm(true); }}
-              className="bg-primary hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              + 새 상품 등록
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSeedGoogleBooks}
+                disabled={seeding}
+                className={`${seeding ? 'bg-gray-400 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600'} text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1`}
+              >
+                {seeding ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> 시딩 중...</>
+                ) : (
+                  'Google Books 시딩'
+                )}
+              </button>
+              <button
+                onClick={() => { setEditBook(null); setShowForm(true); }}
+                className="bg-primary hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                + 새 상품 등록
+              </button>
+            </div>
           </div>
 
           {/* 상품 테이블 */}

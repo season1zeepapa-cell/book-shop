@@ -978,6 +978,168 @@ app.get('/api/admin/books/search', authenticateToken, requireAdmin, async (req, 
 });
 
 // ============================================
+// 🌱 11-5단계: Google Books API 시딩 (관리자 전용)
+// ============================================
+// POST /api/admin/books/seed-google
+// 기존 상품을 전부 삭제하고 Google Books API에서
+// 이미지가 있는 책 약 50권을 자동으로 가져와 등록해요
+// 카테고리별로 다양한 검색어를 사용하고, 가격은 자동 생성해요
+
+// 카테고리별 적절한 판매가를 생성하는 함수
+function generateBookPrice(category) {
+  const ranges = {
+    '프로그래밍': [28000, 45000],
+    '소설': [12000, 18000],
+    '자기계발': [14000, 22000],
+    '경제/경영': [16000, 28000],
+    '에세이': [13000, 18000],
+    '과학': [18000, 32000],
+    '역사': [20000, 35000],
+    '인문': [18000, 30000],
+    '건강': [15000, 25000],
+    '요리': [18000, 28000],
+  };
+  const [min, max] = ranges[category] || [15000, 25000];
+  const price = Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.round(price / 1000) * 1000; // 1000원 단위 반올림
+}
+
+// 판매가로부터 정가(원래 가격)를 역산하는 함수 (10~20% 할인 적용)
+function generateOriginalPrice(salePrice) {
+  const discountRate = 0.10 + Math.random() * 0.10; // 10% ~ 20%
+  const originalPrice = Math.round(salePrice / (1 - discountRate));
+  return Math.round(originalPrice / 1000) * 1000; // 1000원 단위 반올림
+}
+
+app.post('/api/admin/books/seed-google', authenticateToken, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
+
+  try {
+    // 1. Google Books API 키 확인
+    if (!process.env.GOOGLE_BOOKS_API_KEY) {
+      client.release();
+      return res.status(500).json({ error: 'Google Books API 키가 설정되지 않았습니다' });
+    }
+
+    // 2. 10개 카테고리별 검색어 정의
+    const searchQueries = [
+      { query: '프로그래밍 개발', category: '프로그래밍', count: 6 },
+      { query: '소설 베스트셀러', category: '소설', count: 6 },
+      { query: '자기계발 베스트', category: '자기계발', count: 5 },
+      { query: '경제 경영', category: '경제/경영', count: 5 },
+      { query: '에세이 산문', category: '에세이', count: 5 },
+      { query: '과학 교양', category: '과학', count: 5 },
+      { query: '역사 교양서', category: '역사', count: 5 },
+      { query: '인문학', category: '인문', count: 5 },
+      { query: '건강 다이어트', category: '건강', count: 4 },
+      { query: '요리 레시피', category: '요리', count: 4 },
+    ];
+
+    // 3. Google Books API에서 책 데이터 수집
+    const allBooks = [];
+    const seenIds = new Set(); // 중복 방지용
+
+    for (const { query, category, count } of searchQueries) {
+      try {
+        const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=20&langRestrict=ko&key=${process.env.GOOGLE_BOOKS_API_KEY}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          console.error(`Google Books API 실패 (${query}):`, response.status);
+          continue; // 이 카테고리는 건너뛰고 다음으로
+        }
+
+        const data = await response.json();
+        const items = data.items || [];
+
+        // 이미지가 있는 책만 필터링하여 필요한 수만큼 선택
+        let added = 0;
+        for (const item of items) {
+          if (added >= count) break;
+
+          const info = item.volumeInfo;
+
+          // 이미지가 없으면 건너뛰기
+          if (!info.imageLinks?.thumbnail) continue;
+
+          // 중복 확인
+          if (seenIds.has(item.id)) continue;
+          seenIds.add(item.id);
+
+          // 가격 자동 생성
+          const price = generateBookPrice(category);
+          const originalPrice = generateOriginalPrice(price);
+          const discountPercent = Math.round((1 - price / originalPrice) * 100);
+
+          allBooks.push({
+            title: (info.title || '').substring(0, 500),
+            author: (info.authors || ['알 수 없음']).join(', ').substring(0, 255),
+            price,
+            original_price: originalPrice,
+            image: (info.imageLinks.thumbnail).replace('http://', 'https://'),
+            category,
+            rating: parseFloat((Math.random() * 1.5 + 3.5).toFixed(1)), // 3.5 ~ 5.0
+            description: (info.description || info.title || '').substring(0, 1000),
+            badge: discountPercent >= 15 ? `${discountPercent}% 할인` : '',
+          });
+
+          added++;
+        }
+
+        // Google API 부하 방지: 요청 사이 100ms 대기
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (err) {
+        console.error(`카테고리 "${category}" 검색 실패:`, err.message);
+        continue;
+      }
+    }
+
+    console.log(`📚 Google Books에서 ${allBooks.length}권 수집 완료`);
+
+    if (allBooks.length < 10) {
+      client.release();
+      return res.status(500).json({
+        error: '충분한 책 데이터를 수집하지 못했습니다',
+        detail: `수집된 책: ${allBooks.length}권`,
+      });
+    }
+
+    // 4. 트랜잭션으로 기존 삭제 → 새 데이터 삽입
+    await client.query('BEGIN');
+
+    await client.query('DELETE FROM books');
+    await client.query("ALTER SEQUENCE books_id_seq RESTART WITH 1");
+
+    for (const book of allBooks) {
+      await client.query(
+        `INSERT INTO books (title, author, price, original_price, image, category, rating, description, badge)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [book.title, book.author, book.price, book.original_price,
+         book.image, book.category, book.rating, book.description, book.badge]
+      );
+    }
+
+    await client.query('COMMIT');
+    console.log(`✅ Google Books 시딩 완료: ${allBooks.length}권 등록`);
+
+    // 5. 캐시 갱신
+    await refreshBooksCache();
+
+    res.json({
+      message: `Google Books에서 ${allBooks.length}권의 책을 성공적으로 등록했습니다`,
+      count: allBooks.length,
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Google Books 시딩 오류:', error);
+    res.status(500).json({ error: '시딩 중 오류가 발생했습니다' });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================
 // 🌐 12단계: index.html 서빙
 // ============================================
 // API가 아닌 모든 요청에 대해 index.html을 보내줘요
