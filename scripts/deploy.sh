@@ -43,10 +43,10 @@ if command -v nginx &> /dev/null; then
   sudo cp "$APP_DIR/nginx/bookshop.conf" /etc/nginx/sites-available/bookshop
   sudo ln -sf /etc/nginx/sites-available/bookshop /etc/nginx/sites-enabled/bookshop
 
-  # 설정 문법 검사 후 리로드
+  # 설정 문법 검사 후 리로드 또는 시작
   if sudo nginx -t 2>/dev/null; then
-    sudo nginx -s reload
-    echo "✅ Nginx 설정 리로드 완료"
+    sudo systemctl restart nginx
+    echo "✅ Nginx 재시작 완료"
   else
     echo "⚠️ Nginx 설정에 문제가 있습니다. 이전 설정으로 계속 동작합니다."
   fi
