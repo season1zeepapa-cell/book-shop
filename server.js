@@ -559,6 +559,65 @@ app.get('/api/me', authenticateToken, async (req, res) => {
 });
 
 // ============================================
+// 🔑 비밀번호 변경 API
+// ============================================
+// PUT /api/me/password
+// 현재 비밀번호로 본인 확인 후 새 비밀번호로 변경
+app.put('/api/me/password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    // 필수 입력값 확인
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: '현재 비밀번호와 새 비밀번호를 모두 입력해주세요' });
+    }
+
+    // DB에서 사용자 조회 (비밀번호 포함)
+    const userResult = await pool.query(
+      'SELECT id, password FROM app_users WHERE id = $1',
+      [req.user.id]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: '사용자를 찾을 수 없습니다' });
+    }
+
+    const user = userResult.rows[0];
+
+    // 현재 비밀번호 일치 확인 (본인 확인)
+    const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isCurrentValid) {
+      return res.status(401).json({ error: '현재 비밀번호가 일치하지 않습니다' });
+    }
+
+    // 새 비밀번호 강도 검증 (기존 validatePasswordStrength 함수 재사용)
+    const passwordCheck = validatePasswordStrength(newPassword);
+    if (!passwordCheck.valid) {
+      return res.status(400).json({ error: passwordCheck.error });
+    }
+
+    // 현재 비밀번호와 새 비밀번호가 같은지 확인
+    const isSamePassword = await bcrypt.compare(newPassword, user.password);
+    if (isSamePassword) {
+      return res.status(400).json({ error: '현재 비밀번호와 다른 새 비밀번호를 입력해주세요' });
+    }
+
+    // 새 비밀번호 해싱 후 DB 업데이트
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      'UPDATE app_users SET password = $1 WHERE id = $2',
+      [hashedPassword, req.user.id]
+    );
+
+    res.json({ message: '비밀번호가 성공적으로 변경되었습니다' });
+
+  } catch (error) {
+    console.error('비밀번호 변경 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// ============================================
 // 💳 9단계: 결제 승인 API
 // ============================================
 // POST /api/payments/confirm

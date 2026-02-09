@@ -5,17 +5,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 프로젝트 개요
 
 온라인 서점 "북샵" — Express 5 백엔드 + React 18 프론트엔드(CDN 방식) 단일 파일 구조의 풀스택 웹 애플리케이션.
-두 파일(`server.js`, `index.html`)에 모든 서버/클라이언트 코드가 들어있음.=
+두 파일(`server.js`, `index.html`)에 모든 서버/클라이언트 코드가 들어있음.
 
 ## 개발 명령어
 
 ```bash
 npm install           # 의존성 설치
-node server.js        # 개발 서버 (PORT=3000)
-pm2 start ecosystem.config.js --env production  # 프로덕션 (PORT=4000)
+npm start             # 서버 실행 (node server.js)
+npm run dev           # 개발 모드 (NODE_ENV=development)
+npm run prod          # 프로덕션 모드 (NODE_ENV=production)
+pm2 start ecosystem.config.js --env production  # PM2 프로덕션 (PORT=4000)
 ```
 
-테스트 프레임워크 미설정.
+**테스트** (쉘 스크립트 기반, 서버 실행 상태에서 별도 터미널 필요):
+```bash
+bash tests/functional-tests.sh    # API 기능 테스트
+bash tests/security-tests.sh      # 보안 테스트
+bash tests/performance-tests.sh   # 성능 테스트
+```
+
+## 규칙
+
+- **단일 파일 구조 유지**: `server.js`(백엔드 전체)와 `index.html`(프론트엔드 전체)로 분리. 새 파일 생성 지양.
+- **대용량 파일 주의**: `server.js`(~48KB), `index.html`(~130KB). 수정 시 정확한 위치 확인 필수.
+- **CDN 추가 시 CSP 업데이트**: 새 외부 라이브러리 CDN 추가 시 `server.js`의 Helmet CSP 설정도 함께 수정.
+- **상품 캐시 갱신**: 상품 데이터 변경 API 추가/수정 시 `refreshBooksCache()` 호출 필수.
+- **SPA 라우팅**: `express.static()` 미사용. 파일 서빙은 `/{*splat}` 캐치올 라우트로 `index.html`만 전달.
 
 ## 아키텍처
 
