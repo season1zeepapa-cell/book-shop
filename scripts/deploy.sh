@@ -55,14 +55,24 @@ fi
 # 7단계: 헬스체크 (서버가 정상 응답하는지 확인)
 echo "🏥 헬스체크 중..."
 sleep 3
+
+echo "--- Node.js 내부 헬스체크 (port 4000) ---"
 if curl -sf http://127.0.0.1:4000/api/books > /dev/null 2>&1; then
-  echo "✅ 서버가 정상 응답합니다!"
+  echo "✅ Node.js 서버 정상 응답"
 else
-  echo "⚠️ 서버가 응답하지 않습니다. PM2 에러 로그:"
+  echo "❌ Node.js 서버 응답 없음"
+  echo "--- PM2 에러 로그 ---"
   pm2 logs book-shop --lines 30 --nostream 2>&1 || true
-  echo "--- PM2 상태 ---"
-  pm2 describe book-shop 2>&1 || true
 fi
+
+echo "--- Nginx 상태 ---"
+sudo systemctl status nginx --no-pager 2>&1 || true
+echo "--- Nginx 에러 로그 (최근 10줄) ---"
+sudo tail -10 /var/log/nginx/error.log 2>&1 || true
+echo "--- SSL 인증서 만료일 ---"
+sudo openssl x509 -enddate -noout -in /etc/letsencrypt/live/bookshop.aifac.click/fullchain.pem 2>&1 || echo "인증서 파일 없음"
+echo "--- 포트 443 리스닝 확인 ---"
+sudo ss -tlnp | grep ':443' 2>&1 || echo "443 포트 리스닝 없음"
 
 echo ""
 echo "✅ book-shop 배포가 완료되었습니다!"
