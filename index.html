@@ -1454,6 +1454,7 @@
       const [showForm, setShowForm] = React.useState(false); // 등록/수정 폼 표시 여부
       const [editBook, setEditBook] = React.useState(null);  // 수정할 상품 (null이면 등록)
       const [seeding, setSeeding] = React.useState(false);   // Google Books 시딩 진행 중
+      const [refreshingImages, setRefreshingImages] = React.useState(false); // 이미지 갱신 진행 중
 
       // 상품 목록 불러오기 (비활성 포함)
       async function loadBooks() {
@@ -1496,6 +1497,33 @@
           showToast('서버 연결에 실패했습니다');
         }
         setSeeding(false);
+      }
+
+      // Google Books 이미지 URL 일괄 갱신
+      // 시간이 지나면 Google Books 이미지 URL이 만료돼요
+      // 이 버튼으로 모든 책의 이미지 URL을 최신으로 갱신할 수 있어요
+      async function handleRefreshImages() {
+        if (!confirm('모든 책의 이미지 URL을 Google Books에서 다시 가져옵니다.\n시간이 좀 걸릴 수 있어요. 계속하시겠습니까?')) return;
+        setRefreshingImages(true);
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetch('/api/admin/books/refresh-images', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showToast(`이미지 갱신 완료: ${data.updated}권 성공, ${data.failed}권 실패`);
+            loadBooks();
+            // 메인 페이지 캐시도 갱신되도록 전체 책 목록 다시 로드
+            if (typeof onBooksRefresh === 'function') onBooksRefresh();
+          } else {
+            showToast('이미지 갱신 실패: ' + data.error);
+          }
+        } catch (err) {
+          showToast('서버 연결에 실패했습니다');
+        }
+        setRefreshingImages(false);
       }
 
       // 상품 비활성화 (삭제)
@@ -1552,7 +1580,14 @@
             <h3 className="text-lg font-bold text-gray-900">
               전체 상품 ({books.length}개)
             </h3>
-            <div className="flex gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <button
+                onClick={handleRefreshImages}
+                disabled={refreshingImages}
+                className={`flex-1 sm:flex-none ${refreshingImages ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'} text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors`}
+              >
+                {refreshingImages ? '갱신 중...' : '이미지 갱신'}
+              </button>
               <button
                 onClick={handleSeedGoogleBooks}
                 disabled={seeding}

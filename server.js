@@ -1176,6 +1176,90 @@ app.post('/api/admin/books/seed-google', authenticateToken, requireAdmin, async 
 });
 
 // ============================================
+// 🔄 11-6단계: 이미지 URL 일괄 갱신 (관리자 전용)
+// ============================================
+// POST /api/admin/books/refresh-images
+// Google Books API에서 각 책의 최신 이미지 URL을 다시 가져와 DB를 업데이트해요
+// Google Books 이미지 URL은 시간이 지나면 만료(204 No Content)되기 때문에
+// 주기적으로 갱신이 필요해요
+app.post('/api/admin/books/refresh-images', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!process.env.GOOGLE_BOOKS_API_KEY) {
+      return res.status(500).json({ error: 'Google Books API 키가 설정되지 않았습니다' });
+    }
+
+    // 1. 현재 모든 활성 책 조회
+    const booksResult = await pool.query('SELECT id, title, image FROM books WHERE is_active = true');
+    const books = booksResult.rows;
+
+    let updated = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    for (const book of books) {
+      try {
+        // 2. 기존 이미지 URL에서 Google Books ID 추출
+        const idMatch = book.image ? book.image.match(/[?&]id=([^&]+)/) : null;
+        if (!idMatch) {
+          // Google Books URL이 아니면 건너뜀
+          skipped++;
+          continue;
+        }
+
+        const googleBookId = idMatch[1];
+
+        // 3. Google Books API로 최신 이미지 URL 가져오기
+        const apiUrl = `https://www.googleapis.com/books/v1/volumes/${googleBookId}?key=${process.env.GOOGLE_BOOKS_API_KEY}`;
+        const response = await fetch(apiUrl);
+
+        if (!response.ok) {
+          failed++;
+          continue;
+        }
+
+        const data = await response.json();
+        const imageLinks = data.volumeInfo?.imageLinks;
+
+        if (!imageLinks?.thumbnail) {
+          failed++;
+          continue;
+        }
+
+        // 4. 새 이미지 URL로 DB 업데이트 (http → https 변환)
+        const newImage = imageLinks.thumbnail.replace('http://', 'https://');
+        await pool.query(
+          'UPDATE books SET image = $1, updated_at = NOW() WHERE id = $2',
+          [newImage, book.id]
+        );
+        updated++;
+
+        // Google API 속도 제한 방지 (100ms 대기)
+        await new Promise(r => setTimeout(r, 100));
+
+      } catch (err) {
+        console.error(`이미지 갱신 실패 (id=${book.id}):`, err.message);
+        failed++;
+      }
+    }
+
+    // 5. 캐시 갱신
+    await refreshBooksCache();
+
+    res.json({
+      message: `이미지 URL 갱신 완료`,
+      total: books.length,
+      updated,
+      failed,
+      skipped,
+    });
+
+  } catch (error) {
+    console.error('이미지 갱신 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// ============================================
 // 🌐 12단계: index.html 서빙
 // ============================================
 // API가 아닌 모든 요청에 대해 index.html을 보내줘요

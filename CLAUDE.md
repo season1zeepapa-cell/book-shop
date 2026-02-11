@@ -61,6 +61,7 @@ Express 5 서버, PostgreSQL(Supabase), JWT 인증, 역할 기반 접근 제어.
 | PATCH | /api/admin/orders/:id/status | auth + admin | 주문 상태 변경 |
 | GET | /api/admin/books/search | auth + admin | Google Books 검색 프록시 |
 | POST | /api/admin/books/seed-google | auth + admin | Google Books 50권 자동 시딩 |
+| POST | /api/admin/books/refresh-images | auth + admin | Google Books 이미지 URL 일괄 갱신 |
 | GET | /{*splat} | - | SPA 라우팅 (index.html 서빙) |
 
 **상품 캐시:** `BOOKS_CACHE`(배열) + `BOOKS_MAP_CACHE`(Map). 상품 변경 시 `refreshBooksCache()` 호출.
