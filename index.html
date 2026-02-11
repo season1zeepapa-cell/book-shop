@@ -120,8 +120,19 @@
     }
 
     // 이미지 URL이 비어있으면 플레이스홀더를, 있으면 원래 URL을 반환해요
+    // Google Books 기존 URL(/books/content?id=...)은 시간이 지나면 만료되므로
+    // 만료되지 않는 안정적인 URL 형식으로 자동 변환해요
     function getBookImage(imageUrl) {
-      return imageUrl || PLACEHOLDER_BOOK_IMAGE;
+      if (!imageUrl) return PLACEHOLDER_BOOK_IMAGE;
+
+      // Google Books 기존 URL에서 책 ID를 추출하여 안정 URL로 변환
+      // 예: .../books/content?id=ABC123&... → .../books/publisher/content/images/frontcover/ABC123?fife=w400-h600
+      const idMatch = imageUrl.match(/books\.google\.com\/books\/content\?(?:.*&)?id=([^&]+)/);
+      if (idMatch) {
+        return 'https://books.google.com/books/publisher/content/images/frontcover/' + idMatch[1] + '?fife=w400-h600';
+      }
+
+      return imageUrl;
     }
 
     // ============================================

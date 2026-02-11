@@ -993,13 +993,16 @@ app.get('/api/admin/books/search', authenticateToken, requireAdmin, async (req, 
     }
 
     // 필요한 필드만 추출하여 반환 (프론트엔드 폼에 맞게)
+    // 이미지 URL은 만료되지 않는 안정 형식을 사용해요
     const books = (data.items || []).map(item => {
       const info = item.volumeInfo;
       return {
         title: info.title || '',
         author: (info.authors || []).join(', '),
         description: (info.description || '').substring(0, 500),
-        image: (info.imageLinks?.thumbnail || '').replace('http://', 'https://'),
+        image: info.imageLinks?.thumbnail
+          ? `https://books.google.com/books/publisher/content/images/frontcover/${item.id}?fife=w400-h600`
+          : '',
         category: (info.categories || ['기타'])[0],
         rating: info.averageRating || 0,
         publishedDate: info.publishedDate || '',
@@ -1112,7 +1115,7 @@ app.post('/api/admin/books/seed-google', authenticateToken, requireAdmin, async 
             author: (info.authors || ['알 수 없음']).join(', ').substring(0, 255),
             price,
             original_price: originalPrice,
-            image: (info.imageLinks.thumbnail).replace('http://', 'https://'),
+            image: `https://books.google.com/books/publisher/content/images/frontcover/${item.id}?fife=w400-h600`,
             category,
             rating: parseFloat((Math.random() * 1.5 + 3.5).toFixed(1)), // 3.5 ~ 5.0
             description: (info.description || info.title || '').substring(0, 1000),
@@ -1179,66 +1182,44 @@ app.post('/api/admin/books/seed-google', authenticateToken, requireAdmin, async 
 // 🔄 11-6단계: 이미지 URL 일괄 갱신 (관리자 전용)
 // ============================================
 // POST /api/admin/books/refresh-images
-// Google Books API에서 각 책의 최신 이미지 URL을 다시 가져와 DB를 업데이트해요
-// Google Books 이미지 URL은 시간이 지나면 만료(204 No Content)되기 때문에
-// 주기적으로 갱신이 필요해요
+// 기존 만료되는 Google Books URL을 안정적인 URL 형식으로 변환해요
+// 안정 형식: /books/publisher/content/images/frontcover/BOOK_ID?fife=w400-h600
+// 이 형식은 만료되지 않아서 한 번 변환하면 다시 갱신할 필요가 없어요
 app.post('/api/admin/books/refresh-images', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    if (!process.env.GOOGLE_BOOKS_API_KEY) {
-      return res.status(500).json({ error: 'Google Books API 키가 설정되지 않았습니다' });
-    }
-
     // 1. 현재 모든 활성 책 조회
     const booksResult = await pool.query('SELECT id, title, image FROM books WHERE is_active = true');
     const books = booksResult.rows;
 
     let updated = 0;
-    let failed = 0;
     let skipped = 0;
 
     for (const book of books) {
       try {
-        // 2. 기존 이미지 URL에서 Google Books ID 추출
-        const idMatch = book.image ? book.image.match(/[?&]id=([^&]+)/) : null;
-        if (!idMatch) {
-          // Google Books URL이 아니면 건너뜀
+        // 2. 이미 안정 URL 형식이면 건너뛰기
+        if (book.image && book.image.includes('/publisher/content/images/frontcover/')) {
           skipped++;
           continue;
         }
 
+        // 3. 기존 URL에서 Google Books ID 추출
+        const idMatch = book.image ? book.image.match(/[?&]id=([^&]+)/) : null;
+        if (!idMatch) {
+          skipped++;
+          continue;
+        }
+
+        // 4. 안정적인 URL 형식으로 변환하여 DB 업데이트
         const googleBookId = idMatch[1];
-
-        // 3. Google Books API로 최신 이미지 URL 가져오기
-        const apiUrl = `https://www.googleapis.com/books/v1/volumes/${googleBookId}?key=${process.env.GOOGLE_BOOKS_API_KEY}`;
-        const response = await fetch(apiUrl);
-
-        if (!response.ok) {
-          failed++;
-          continue;
-        }
-
-        const data = await response.json();
-        const imageLinks = data.volumeInfo?.imageLinks;
-
-        if (!imageLinks?.thumbnail) {
-          failed++;
-          continue;
-        }
-
-        // 4. 새 이미지 URL로 DB 업데이트 (http → https 변환)
-        const newImage = imageLinks.thumbnail.replace('http://', 'https://');
+        const stableImage = `https://books.google.com/books/publisher/content/images/frontcover/${googleBookId}?fife=w400-h600`;
         await pool.query(
           'UPDATE books SET image = $1, updated_at = NOW() WHERE id = $2',
-          [newImage, book.id]
+          [stableImage, book.id]
         );
         updated++;
 
-        // Google API 속도 제한 방지 (100ms 대기)
-        await new Promise(r => setTimeout(r, 100));
-
       } catch (err) {
         console.error(`이미지 갱신 실패 (id=${book.id}):`, err.message);
-        failed++;
       }
     }
 
@@ -1249,7 +1230,6 @@ app.post('/api/admin/books/refresh-images', authenticateToken, requireAdmin, asy
       message: `이미지 URL 갱신 완료`,
       total: books.length,
       updated,
-      failed,
       skipped,
     });
 
