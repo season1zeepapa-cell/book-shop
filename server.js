@@ -280,6 +280,19 @@ async function initDB() {
       created_at TIMESTAMP DEFAULT NOW(),       -- 등록 시각
       updated_at TIMESTAMP DEFAULT NOW()        -- 수정 시각
     );
+
+    -- 1:1 문의(inquiries) 테이블
+    -- 사용자가 작성한 문의와 관리자 답변을 저장하는 테이블이에요
+    CREATE TABLE IF NOT EXISTS inquiries (
+      id SERIAL PRIMARY KEY,                                    -- 문의 고유 번호
+      user_id INTEGER NOT NULL REFERENCES app_users(id),        -- 문의한 사용자
+      subject VARCHAR(200) NOT NULL,                            -- 문의 제목
+      content TEXT NOT NULL,                                    -- 문의 내용
+      status VARCHAR(20) DEFAULT 'PENDING',                     -- 상태: PENDING(대기), ANSWERED(답변완료)
+      admin_reply TEXT,                                         -- 관리자 답변
+      replied_at TIMESTAMP,                                     -- 답변 시각
+      created_at TIMESTAMP DEFAULT NOW()                        -- 문의 생성 시각
+    );
   `;
   await pool.query(createTableQuery);
   console.log('✅ 데이터베이스 테이블 준비 완료');
@@ -762,6 +775,46 @@ app.get('/api/orders', authenticateToken, async (req, res) => {
 });
 
 // ============================================
+// 📨 1:1 문의 API (사용자용)
+// ============================================
+
+// POST /api/inquiries — 문의 등록 (로그인 필요)
+app.post('/api/inquiries', authenticateToken, async (req, res) => {
+  try {
+    const { subject, content } = req.body;
+    if (!subject || !content) {
+      return res.status(400).json({ error: '제목과 내용을 모두 입력해주세요' });
+    }
+    if (subject.length > 200) {
+      return res.status(400).json({ error: '제목은 200자 이내로 입력해주세요' });
+    }
+    const result = await pool.query(
+      'INSERT INTO inquiries (user_id, subject, content) VALUES ($1, $2, $3) RETURNING *',
+      [req.user.id, subject, content]
+    );
+    res.status(201).json({ message: '문의가 등록되었습니다', inquiry: result.rows[0] });
+  } catch (error) {
+    console.error('문의 등록 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// GET /api/inquiries — 내 문의 목록 조회 (로그인 필요)
+app.get('/api/inquiries', authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, subject, content, status, admin_reply, replied_at, created_at
+       FROM inquiries WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50`,
+      [req.user.id]
+    );
+    res.json({ inquiries: result.rows });
+  } catch (error) {
+    console.error('문의 목록 조회 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// ============================================
 // 📚 11-1단계: 공개 상품 목록 API
 // ============================================
 // GET /api/books — 누구나 접근 가능 (인증 불필요)
@@ -959,6 +1012,72 @@ app.patch('/api/admin/orders/:id/status', authenticateToken, requireAdmin, async
     res.json({ message: '주문 상태가 변경되었습니다', order: result.rows[0] });
   } catch (error) {
     console.error('주문 상태 변경 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// ============================================
+// 📨 관리자 문의 관리 API
+// ============================================
+
+// GET /api/admin/inquiries — 전체 문의 목록 (페이지네이션 + 상태 필터)
+app.get('/api/admin/inquiries', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const status = req.query.status;
+    const offset = (page - 1) * limit;
+
+    let whereClause = '';
+    const params = [];
+    if (status) {
+      whereClause = 'WHERE i.status = $1';
+      params.push(status);
+    }
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM inquiries i ${whereClause}`, params
+    );
+    const totalCount = parseInt(countResult.rows[0].count);
+
+    const result = await pool.query(
+      `SELECT i.*, u.email as user_email
+       FROM inquiries i JOIN app_users u ON i.user_id = u.id
+       ${whereClause}
+       ORDER BY i.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    );
+
+    res.json({
+      inquiries: result.rows,
+      pagination: { page, limit, totalCount, totalPages: Math.ceil(totalCount / limit) },
+    });
+  } catch (error) {
+    console.error('관리자 문의 목록 조회 오류:', error);
+    res.status(500).json({ error: '서버 오류가 발생했습니다' });
+  }
+});
+
+// PATCH /api/admin/inquiries/:id/reply — 관리자 답변 작성
+app.patch('/api/admin/inquiries/:id/reply', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const inquiryId = parseInt(req.params.id);
+    const { reply } = req.body;
+    if (!reply || !reply.trim()) {
+      return res.status(400).json({ error: '답변 내용을 입력해주세요' });
+    }
+    const result = await pool.query(
+      `UPDATE inquiries SET admin_reply = $1, status = 'ANSWERED', replied_at = NOW()
+       WHERE id = $2 RETURNING *`,
+      [reply, inquiryId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: '문의를 찾을 수 없습니다' });
+    }
+    res.json({ message: '답변이 등록되었습니다', inquiry: result.rows[0] });
+  } catch (error) {
+    console.error('문의 답변 오류:', error);
     res.status(500).json({ error: '서버 오류가 발생했습니다' });
   }
 });
