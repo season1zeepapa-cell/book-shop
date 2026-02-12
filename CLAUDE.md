@@ -27,21 +27,34 @@ bash tests/performance-tests.sh   # 성능 테스트
 ## 규칙
 
 - **단일 파일 구조 유지**: `server.js`(백엔드 전체)와 `index.html`(프론트엔드 전체)로 분리. 새 파일 생성 지양.
-- **대용량 파일 주의**: `server.js`(~48KB), `index.html`(~130KB). 수정 시 정확한 위치 확인 필수.
-- **CDN 추가 시 CSP 업데이트**: 새 외부 라이브러리 CDN 추가 시 `server.js`의 Helmet CSP 설정도 함께 수정.
+- **대용량 파일 주의**: `server.js`(~1,265줄), `index.html`(~3,010줄). 수정 시 정확한 위치 확인 필수.
+- **CDN 추가 시 CSP 업데이트**: 새 외부 라이브러리 CDN 추가 시 `server.js`의 Helmet CSP 설정(~130행)도 함께 수정.
 - **상품 캐시 갱신**: 상품 데이터 변경 API 추가/수정 시 `refreshBooksCache()` 호출 필수.
 - **SPA 라우팅**: `express.static()` 미사용. 파일 서빙은 `/{*splat}` 캐치올 라우트로 `index.html`만 전달.
+- **Google Books 이미지 URL**: 안정 형식 사용 필수 — `https://books.google.com/books/publisher/content/images/frontcover/{BOOK_ID}?fife=w400-h600` (기존 `/books/content?id=...` 형식은 시간 경과 시 만료됨)
 
 ## 아키텍처
 
-### 백엔드 (`server.js`)
+### 백엔드 (`server.js`) — 코드 영역 가이드
 
-Express 5 서버, PostgreSQL(Supabase), JWT 인증, 역할 기반 접근 제어.
+| 영역 | 대략적 위치 | 설명 |
+|------|-------------|------|
+| 환경변수 검증 | ~1-48행 | 필수 변수 확인, JWT_SECRET 32자 검증 |
+| 비밀번호 강도 검증 | ~51-76행 | `validatePassword()` — 8자+대/소/숫자/특수 |
+| 모듈 import | ~78-87행 | express, pg, bcrypt, jwt, helmet 등 |
+| 상품 캐시 시스템 | ~100-113행 | `BOOKS_CACHE`, `BOOKS_MAP_CACHE`, `refreshBooksCache()` |
+| Helmet CSP 설정 | ~130-170행 | CDN 허용 목록 (새 CDN 추가 시 여기 수정) |
+| Rate Limiter | ~172-184행 | `loginLimiter`(15분/5회), `paymentLimiter`(15분/10회) |
+| DB 연결/초기화 | ~190-302행 | PostgreSQL Pool, `initDB()` 테이블 자동 생성 |
+| JWT 미들웨어 | ~311-344행 | `authenticateToken`, `requireAdmin` |
+| 결제 금액 검증 | ~359-413행 | `validatePaymentAmount()` — 배송비: 3만원 이상 무료, 미만 3,000원 |
+| API 엔드포인트 | ~420-1251행 | 전체 REST API (아래 표 참고) |
+| SPA 캐치올 라우트 | ~1251행 | `/{*splat}` → index.html 서빙 |
+| 서버 시작 | ~1258-1265행 | `initDB()` → `app.listen(PORT)` |
 
 **미들웨어 체인:**
 - `authenticateToken` — JWT 검증 → `req.user = { id, email, role }`
 - `requireAdmin` — `authenticateToken` 후 `role === 'admin'` 확인
-- `loginLimiter` — 15분/5회, `paymentLimiter` — 15분/10회
 
 **API 엔드포인트:**
 
@@ -50,6 +63,7 @@ Express 5 서버, PostgreSQL(Supabase), JWT 인증, 역할 기반 접근 제어.
 | POST | /api/register | - | 회원가입 (비밀번호 8자+대/소/숫자/특수) |
 | POST | /api/login | loginLimiter | 로그인 (JWT 7일 만료, role 포함) |
 | GET | /api/me | auth | 내 정보 조회 |
+| PUT | /api/me/password | auth | 비밀번호 변경 (현재 비밀번호 확인) |
 | GET | /api/books | - | 활성 상품 목록 (캐시) |
 | POST | /api/payments/confirm | paymentLimiter + auth | 토스페이먼츠 결제 승인 |
 | GET | /api/orders | auth | 내 주문 내역 (최대 50건) |
@@ -61,12 +75,10 @@ Express 5 서버, PostgreSQL(Supabase), JWT 인증, 역할 기반 접근 제어.
 | PATCH | /api/admin/orders/:id/status | auth + admin | 주문 상태 변경 |
 | GET | /api/admin/books/search | auth + admin | Google Books 검색 프록시 |
 | POST | /api/admin/books/seed-google | auth + admin | Google Books 50권 자동 시딩 |
-| POST | /api/admin/books/refresh-images | auth + admin | Google Books 이미지 URL 일괄 갱신 |
+| POST | /api/admin/books/refresh-images | auth + admin | 이미지 URL을 안정 형식으로 일괄 변환 |
 | GET | /{*splat} | - | SPA 라우팅 (index.html 서빙) |
 
-**상품 캐시:** `BOOKS_CACHE`(배열) + `BOOKS_MAP_CACHE`(Map). 상품 변경 시 `refreshBooksCache()` 호출.
-
-**결제 보안:** `validatePaymentAmount()` — 서버 캐시 가격으로 금액 재검증 후 토스 API 호출.
+**결제 보안:** `validatePaymentAmount()` — 서버 캐시 가격으로 금액 재검증 후 토스 API 호출. 배송비 로직: 총액 30,000원 이상 무료, 미만 시 3,000원 추가.
 
 **initDB():** 서버 시작 시 `app_users`, `orders`, `books` 테이블 자동 생성 + `ADMIN_EMAIL` 계정 관리자 승격.
 
@@ -97,6 +109,8 @@ Express 5 서버, PostgreSQL(Supabase), JWT 인증, 역할 기반 접근 제어.
 
 **Tailwind 커스텀 색상:** `primary`(#2563eb), `secondary`(#f59e0b), `accent`(#10b981)
 
+**이미지 처리:** `getBookImage()` 함수가 Google Books 기존 URL을 안정 형식으로 자동 변환. `handleImgError()`로 실패 시 SVG 플레이스홀더 표시.
+
 ### 데이터베이스 스키마
 
 ```sql
@@ -119,8 +133,12 @@ books (id, title, author, price, original_price, image, category, rating, descri
 
 - **AWS Lightsail** (Ubuntu, ap-northeast-2) + PM2 + Nginx(HTTPS 리버스 프록시)
 - **도메인:** bookshop.aifac.click (Let's Encrypt SSL)
-- **GitHub Actions:** main push → SSH → `scripts/deploy.sh` (git pull → npm install → pm2 restart → nginx reload)
+- **GitHub Actions:** main push → SSH → `scripts/deploy.sh`
 - **GitHub Secrets:** `LIGHTSAIL_HOST`, `LIGHTSAIL_USERNAME`, `LIGHTSAIL_SSH_KEY`
+- **Nginx 설정:** `nginx/bookshop.conf` — deploy.sh에서 매 배포 시 자동 동기화
+- **서버 경로:** `/home/ubuntu/book-shop`
+
+**배포 흐름:** `git push main` → GitHub Actions → SSH → `deploy.sh` (git pull → npm install --production → pm2 restart → nginx 설정 동기화 → 헬스체크)
 
 ## 환경 변수 (.env)
 
